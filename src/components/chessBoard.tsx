@@ -53,7 +53,12 @@ const ChessBoard = () => {
       const piece = pieces.find((piece) => piece.id === draggingId);
       if (!piece) return;
       const pieceInToTile = pieces.find((piece) => piece.position == to);
-      const isValidMovement = checkMovementForPiece(piece, to, pieceInToTile);
+      const isValidMovement = checkMovementForPiece(
+        piece,
+        to,
+        pieceInToTile,
+        pieces
+      );
       console.log(isValidMovement);
       if (isValidMovement) movePiece(draggingId, to);
     }
@@ -81,7 +86,6 @@ const ChessBoard = () => {
             : "bg-[var(--color-dark-square)]"
         } flex justify-center items-center`}
       >
-        {idx}
         <AnimatePresence>
           {Icon && piece && (
             <motion.div
@@ -102,9 +106,9 @@ const ChessBoard = () => {
                 stiffness: 300,
                 damping: 20,
               }}
-              className="cursor-grab text-2xl"
+              className="cursor-grab text-5xl"
             >
-              <Icon />
+              <Icon style={piece.style} />
             </motion.div>
           )}
         </AnimatePresence>
