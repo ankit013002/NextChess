@@ -13,6 +13,7 @@ import {
 } from "firebase/firestore";
 import { createMatch, setupDataChannel } from "./utils/CreateMatch";
 import { joinMatch } from "./utils/JoinMatch";
+import { sendMove } from "./utils/SendMove";
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY!,

@@ -2,7 +2,7 @@
 
 import React, { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence, PanInfo } from "framer-motion";
-import { chessPieces } from "@/utils/pieces";
+import { ChessPiece, chessPieces } from "@/utils/pieces";
 import { checkMovementForPiece } from "@/utils/checkMovementForPiece";
 import { createMatch } from "@/webrtc/utils/CreateMatch";
 import { joinMatch } from "@/webrtc/utils/JoinMatch";
@@ -13,6 +13,7 @@ const ChessBoard = ({ matchId, isHost }) => {
   const boardRef = useRef<HTMLDivElement>(null);
   const [draggingId, setDraggingId] = useState<number | null>();
   const [turn, setTurn] = useState<string>("WHITE");
+  const [check, setCheck] = useState<boolean>(false);
   const [pieces, setPieces] = useState(chessPieces);
 
   const peerConnectionRef = useRef<RTCPeerConnection>(null);
@@ -44,6 +45,9 @@ const ChessBoard = ({ matchId, isHost }) => {
       } else if (piece) {
         return [...prevState];
       }
+      if (piece) {
+        setCheck(isInCheck(piece));
+      }
       setTurn((prevTurn) => {
         if (prevTurn === "WHITE") {
           return "BLACK";
@@ -53,6 +57,22 @@ const ChessBoard = ({ matchId, isHost }) => {
       });
       return newState;
     });
+  }
+
+  function isInCheck(movedPiece: ChessPiece): boolean {
+    const enemyKing = pieces.find((p) => p.type === "king" && p.side !== turn);
+    if (!enemyKing) return false;
+
+    const attackers = pieces.filter((p) => p.side === turn);
+    for (const attacker of attackers) {
+      if (
+        checkMovementForPiece(attacker, enemyKing.position, enemyKing, pieces)
+      ) {
+        return true;
+      }
+    }
+
+    return false;
   }
 
   function handleDragEnd(_event: MouseEvent | TouchEvent, info: PanInfo) {
@@ -88,6 +108,15 @@ const ChessBoard = ({ matchId, isHost }) => {
     setDraggingId(dragId);
   }
 
+  function dragConstraint(piece: ChessPiece) {
+    if (check) {
+      console.log("check");
+      return piece.type === "king" && piece.side === turn;
+    } else {
+      return piece.side === turn;
+    }
+  }
+
   const squares = Array.from({ length: BOARD_SIZE ** 2 }, (_, idx) => {
     const x = idx % BOARD_SIZE;
     const y = Math.floor(idx / BOARD_SIZE);
@@ -103,12 +132,13 @@ const ChessBoard = ({ matchId, isHost }) => {
             : "bg-[var(--color-dark-square)]"
         } flex justify-center items-center`}
       >
+        {idx}
         <AnimatePresence>
           {Icon && piece && (
             <motion.div
               layout
               key={piece.id}
-              drag={piece.side === turn}
+              drag={dragConstraint(piece)}
               dragSnapToOrigin
               dragMomentum={false}
               onDragStart={() => handleDragStart(piece.id)}
