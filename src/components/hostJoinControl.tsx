@@ -1,15 +1,26 @@
 "use client";
 
 import { redirect } from "next/navigation";
+import { useRouter } from "next/navigation";
 import React, { useState } from "react";
 
 const HostJoinControl = () => {
+  // const hostNewGame = () => {
+  //   const matchId = Math.floor(Math.random() * 99999);
+  //   redirect(`/match/${matchId}`);
+  // };
+  const router = useRouter();
+  const [joinMatchId, setJoinMatchId] = useState("");
+  const [joinPressed, setJoinPressed] = useState(false);
+
   const hostNewGame = () => {
     const matchId = Math.floor(Math.random() * 99999);
-    redirect(`/match/${matchId}`);
+    router.push(`/match/${matchId}?isHost=${true}`);
   };
 
-  const [joinPressed, setJoinPressed] = useState(false);
+  const joinGame = () => {
+    router.push(`/match/${joinMatchId}?isHost=${false}`);
+  };
 
   return (
     <div className="flex flex-col gap-y-2">
@@ -29,7 +40,18 @@ const HostJoinControl = () => {
       </div>
       <div>
         {joinPressed && (
-          <input type="text" placeholder="Type here" className="input" />
+          <div className="flex">
+            <input
+              value={joinMatchId}
+              onChange={(e) => setJoinMatchId(e.target.value)}
+              type="text"
+              placeholder="Type here"
+              className="input"
+            />
+            <button onClick={() => joinGame()} className="btn">
+              Join
+            </button>
+          </div>
         )}
       </div>
     </div>

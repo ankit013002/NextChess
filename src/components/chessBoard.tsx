@@ -1,16 +1,33 @@
 "use client";
 
-import React, { useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence, PanInfo } from "framer-motion";
 import { chessPieces } from "@/utils/pieces";
 import { checkMovementForPiece } from "@/utils/checkMovementForPiece";
+import { createMatch } from "@/webrtc/utils/CreateMatch";
+import { joinMatch } from "@/webrtc/utils/JoinMatch";
+import { sendMove } from "@/webrtc/utils/SendMove";
 
-const ChessBoard = () => {
+const ChessBoard = ({ matchId, isHost }) => {
   const BOARD_SIZE = 8;
   const boardRef = useRef<HTMLDivElement>(null);
   const [draggingId, setDraggingId] = useState<number | null>();
   const [turn, setTurn] = useState<string>("WHITE");
   const [pieces, setPieces] = useState(chessPieces);
+
+  const peerConnectionRef = useRef<RTCPeerConnection>(null);
+  const dataChannelRef = useRef<RTCDataChannel>(null);
+  const [log, setLog] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (isHost === "true") {
+      console.log("IT IS TRUE");
+      createMatch(peerConnectionRef, dataChannelRef, matchId, setLog);
+    } else {
+      joinMatch(matchId, peerConnectionRef, dataChannelRef, setLog);
+      console.log("HEREEEE");
+    }
+  }, [isHost]);
 
   function movePiece(pieceId: number, to: number) {
     setPieces((prevState) => {
@@ -123,6 +140,17 @@ const ChessBoard = () => {
         className="w-[80vw] max-w-[1080px] aspect-square border-2 border-black bg-white grid grid-cols-8 grid-rows-8"
       >
         {squares}
+      </div>
+      <div>
+        {log?.map((log, index) => (
+          <div key={index}>{log}</div>
+        ))}
+        <button
+          onClick={() => sendMove("MY MESSAGE", dataChannelRef, setLog)}
+          className="btn"
+        >
+          Send Move
+        </button>
       </div>
     </div>
   );
