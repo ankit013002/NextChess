@@ -31,12 +31,14 @@ const ChessBoard = ({ matchId, isHost }) => {
   }, [isHost]);
 
   function movePiece(pieceId: number, to: number) {
+    console.log("NOPEE");
     setPieces((prevState) => {
       const newState = [...prevState];
       const piece = newState.find((piece) => piece.id == draggingId);
       const existingPiece = newState.find(
         (piece) => piece.position == to && piece.id != pieceId
       );
+
       if (existingPiece) {
         existingPiece.position = -1;
       }
@@ -46,7 +48,7 @@ const ChessBoard = ({ matchId, isHost }) => {
         return [...prevState];
       }
       if (piece) {
-        setCheck(isInCheck(piece));
+        setCheck(isInCheck(turn, newState));
       }
       setTurn((prevTurn) => {
         if (prevTurn === "WHITE") {
@@ -59,14 +61,29 @@ const ChessBoard = ({ matchId, isHost }) => {
     });
   }
 
-  function isInCheck(movedPiece: ChessPiece): boolean {
-    const enemyKing = pieces.find((p) => p.type === "king" && p.side !== turn);
+  function isInCheck(
+    side: string,
+    currState: ChessPiece[],
+    king?: ChessPiece
+  ): boolean {
+    let enemyKing = king;
+    if (!king) {
+      enemyKing = currState.find((p) => p.type === "king" && p.side !== side);
+    }
+
+    console.log(enemyKing);
+
     if (!enemyKing) return false;
 
-    const attackers = pieces.filter((p) => p.side === turn);
+    const attackers = currState.filter((p) => p.side !== enemyKing.side);
     for (const attacker of attackers) {
       if (
-        checkMovementForPiece(attacker, enemyKing.position, enemyKing, pieces)
+        checkMovementForPiece(
+          attacker,
+          enemyKing.position,
+          enemyKing,
+          currState
+        )
       ) {
         return true;
       }
@@ -96,10 +113,44 @@ const ChessBoard = ({ matchId, isHost }) => {
         pieceInToTile,
         pieces
       );
-      console.log(isValidMovement);
-      if (isValidMovement) movePiece(draggingId, to);
+      if (!isValidMovement) {
+        setDraggingId(null);
+        return;
+      }
+      const side = turn as "WHITE" | "BLACK";
+      const stillInCheck = wouldLeaveInCheck(side, pieces, draggingId, to);
+
+      if (!stillInCheck) {
+        console.log("FREE TO MOVE");
+        movePiece(draggingId, to);
+      }
     }
     setDraggingId(null);
+  }
+
+  function cloneBoard(board: ChessPiece[]): ChessPiece[] {
+    return board.map((p) => ({ ...p }));
+  }
+
+  function wouldLeaveInCheck(
+    currentSide: "WHITE" | "BLACK",
+    board: ChessPiece[],
+    movingId: number,
+    to: number
+  ): boolean {
+    const sim = cloneBoard(board);
+
+    const mover = sim.find((p) => p.id === movingId)!;
+    const victim = sim.find((p) => p.position === to && p.id !== movingId);
+    if (victim) victim.position = -1;
+    mover.position = to;
+
+    const myKing = sim.find(
+      (p) => p.side === currentSide && p.type === "king"
+    )!;
+
+    const opponentSide = currentSide === "WHITE" ? "BLACK" : "WHITE";
+    return isInCheck(opponentSide, sim, myKing);
   }
 
   function handleDragStart(dragId: number) {
@@ -109,12 +160,7 @@ const ChessBoard = ({ matchId, isHost }) => {
   }
 
   function dragConstraint(piece: ChessPiece) {
-    if (check) {
-      console.log("check");
-      return piece.type === "king" && piece.side === turn;
-    } else {
-      return piece.side === turn;
-    }
+    return piece.side === turn;
   }
 
   const squares = Array.from({ length: BOARD_SIZE ** 2 }, (_, idx) => {
