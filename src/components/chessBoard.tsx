@@ -8,6 +8,9 @@ import { createMatch } from "@/webrtc/utils/CreateMatch";
 import { joinMatch } from "@/webrtc/utils/JoinMatch";
 import { sendMove } from "@/webrtc/utils/SendMove";
 
+const goodColor = "color:green; font-size:20px;";
+const badColor = "color:red; font-size:20px;";
+
 const ChessBoard = ({ matchId, isHost }) => {
   const BOARD_SIZE = 8;
   const boardRef = useRef<HTMLDivElement>(null);
@@ -17,6 +20,7 @@ const ChessBoard = ({ matchId, isHost }) => {
   const dataChannelRef = useRef<RTCDataChannel>(null);
   const [log, setLog] = useState<string[]>([]);
   const draggingIdRef = useRef<number | null>(null);
+  const [checkMate, setCheckMate] = useState(false);
 
   useEffect(() => {
     function onCancel() {
@@ -27,7 +31,7 @@ const ChessBoard = ({ matchId, isHost }) => {
     }
     function onUp() {
       if (draggingIdRef.current !== null) {
-        console.log("Pointer up detected");
+        // console.log("Pointer up detected");
       }
     }
 
@@ -109,7 +113,7 @@ const ChessBoard = ({ matchId, isHost }) => {
     }
 
     if (to === piece.position) {
-      console.log("Piece dropped on same square");
+      // console.log("Piece dropped on same square");
       draggingIdRef.current = null;
       return;
     }
@@ -144,7 +148,40 @@ const ChessBoard = ({ matchId, isHost }) => {
 
     console.log("Executing valid move");
     movePiece(draggingIdRef.current, to);
+
+    if (isInCheckMate()) {
+      setCheckMate(true);
+      console.log("%c CHECKMATE", badColor);
+    } else {
+      console.log("%c YOU'RE GOOD", goodColor);
+    }
     draggingIdRef.current = null;
+  }
+
+  function isInCheckMate() {
+    const enemyTurn = turn === "WHITE" ? "BLACK" : "WHITE";
+    if (isInCheck(enemyTurn, pieces)) {
+      console.log("HERE");
+      const piecesOnSingleSide = pieces.filter(
+        (piece) => piece.side === enemyTurn && piece.position !== -1
+      );
+      let isItCheckMate = false;
+      piecesOnSingleSide.some((piece) => {
+        Array.from({ length: 64 }).some((_, i: number) => {
+          const pieceInToTile = pieces.find((piece) => piece.position === i);
+          if (
+            !isItCheckMate &&
+            checkMovementForPiece(piece, i, pieceInToTile, pieces)
+          ) {
+            isItCheckMate = !wouldLeaveInCheck(enemyTurn, pieces, piece.id, i);
+          }
+          return isItCheckMate;
+        });
+      });
+      return !isItCheckMate;
+    } else {
+      return false;
+    }
   }
 
   function wouldLeaveInCheck(
@@ -167,15 +204,16 @@ const ChessBoard = ({ matchId, isHost }) => {
     if (!piece) return;
     if (piece.side !== turn) return;
 
-    console.log(`Starting drag for piece ${id} (${piece.type})`);
+    // console.log(`Starting drag for piece ${id} (${piece.type})`);
     draggingIdRef.current = id;
   }
 
   function dragConstraint(piece: ChessPiece) {
     const allowed = piece.side === turn;
-    console.log(
-      `Drag constraint for piece ${piece.id}: ${allowed} (side: ${piece.side}, turn: ${turn})`
-    );
+    console
+      .log
+      // `Drag constraint for piece ${piece.id}: ${allowed} (side: ${piece.side}, turn: ${turn})`
+      ();
     return allowed;
   }
 
@@ -213,7 +251,7 @@ const ChessBoard = ({ matchId, isHost }) => {
               dragTransition={{ bounceStiffness: 300, bounceDamping: 10 }}
               whileDrag={{ scale: 1.5, zIndex: 1000 }}
               onDragStart={(_, info) => {
-                if (info.point) {
+                if (info.point && !checkMate) {
                   handleDragStart(piece.id);
                 }
               }}
@@ -260,7 +298,16 @@ const ChessBoard = ({ matchId, isHost }) => {
           e.preventDefault();
         }}
       >
-        {squares}
+        {checkMate ? (
+          <>
+            <div className="absolute flex items-center justify-center left-[35%] top-[40%] w-[30%] h-[20%] bg-[var(--primary)] ">
+              <div className="text-3xl">{turn} LOST!</div>
+            </div>
+            {squares}
+          </>
+        ) : (
+          squares
+        )}
       </div>
       <div>
         {log?.map((log, index) => (
