@@ -17,6 +17,11 @@ export interface ChessPiece {
   side: string;
 }
 
+export interface DefaultChessPiece {
+  type: "rook" | "knight" | "bishop" | "queen" | "king";
+  image: IconType;
+}
+
 export const chessPieces: ChessPiece[] = [
   {
     id: 0,
@@ -164,5 +169,28 @@ export const chessPieces: ChessPiece[] = [
     style: { color: "black" },
     image: TbChessRookFilled,
     side: "BLACK",
+  },
+];
+
+export const defaultPieces = [
+  {
+    type: "rook",
+    style: { color: "var(--color-light-square)" },
+    image: TbChessRookFilled,
+  },
+  {
+    type: "knight",
+    style: { color: "var(--color-light-square)" },
+    image: TbChessKnightFilled,
+  },
+  {
+    type: "bishop",
+    style: { color: "var(--color-light-square)" },
+    image: TbChessBishopFilled,
+  },
+  {
+    type: "queen",
+    style: { color: "var(--color-light-square)" },
+    image: TbChessQueenFilled,
   },
 ];

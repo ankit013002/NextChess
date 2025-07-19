@@ -1,8 +1,13 @@
 "use client";
 
 import React, { useEffect, useRef, useState } from "react";
-import { motion, AnimatePresence, PanInfo } from "framer-motion";
-import { ChessPiece, chessPieces } from "@/utils/pieces";
+import { motion, AnimatePresence, PanInfo, scale } from "framer-motion";
+import {
+  ChessPiece,
+  chessPieces,
+  DefaultChessPiece,
+  defaultPieces,
+} from "@/utils/pieces";
 import { checkMovementForPiece } from "@/utils/checkMovementForPiece";
 import { createMatch } from "@/webrtc/utils/CreateMatch";
 import { joinMatch } from "@/webrtc/utils/JoinMatch";
@@ -21,6 +26,7 @@ const ChessBoard = ({ matchId, isHost }) => {
   const [log, setLog] = useState<string[]>([]);
   const draggingIdRef = useRef<number | null>(null);
   const [checkMate, setCheckMate] = useState(false);
+  const [promotionPopup, setPromotionPopup] = useState(false);
 
   useEffect(() => {
     function onCancel() {
@@ -148,6 +154,14 @@ const ChessBoard = ({ matchId, isHost }) => {
 
     console.log("Executing valid move");
     movePiece(draggingIdRef.current, to);
+    console.log("BEFORE PROMOTION: ", draggingIdRef.current);
+    if (
+      piece.type == "pawn" &&
+      ((piece.position >= 0 && piece.position < 8) ||
+        (piece.position >= 56 && piece.position < 64))
+    ) {
+      setPromotionPopup(true);
+    }
 
     if (isInCheckMate()) {
       setCheckMate(true);
@@ -155,6 +169,36 @@ const ChessBoard = ({ matchId, isHost }) => {
     } else {
       console.log("%c YOU'RE GOOD", goodColor);
     }
+
+    if (
+      !(
+        piece.type == "pawn" &&
+        ((piece.position >= 0 && piece.position < 8) ||
+          (piece.position >= 56 && piece.position < 64))
+      )
+    )
+      draggingIdRef.current = null;
+  }
+
+  // Need to fix issue where one promotion after another doesn't work
+  function promotePawn(selectedPiece: DefaultChessPiece) {
+    const pawnId = draggingIdRef.current;
+    if (pawnId == null) {
+      return;
+    }
+    setPieces((prevPieces) =>
+      prevPieces.map((piece) =>
+        piece.id === pawnId
+          ? {
+              ...piece,
+              type: selectedPiece.type,
+              image: selectedPiece.image,
+            }
+          : piece
+      )
+    );
+
+    setPromotionPopup(false);
     draggingIdRef.current = null;
   }
 
@@ -239,6 +283,7 @@ const ChessBoard = ({ matchId, isHost }) => {
             : "bg-[var(--color-dark-square)]"
         } flex justify-center items-center`}
       >
+        {idx}
         <AnimatePresence>
           {Icon && piece && (
             <motion.div
@@ -257,6 +302,7 @@ const ChessBoard = ({ matchId, isHost }) => {
               }}
               onDragEnd={(e, info) => {
                 if (draggingIdRef.current === piece.id && info.point) {
+                  console.log(draggingIdRef);
                   handleDragEnd(e as MouseEvent | TouchEvent, info);
                 }
               }}
@@ -306,7 +352,32 @@ const ChessBoard = ({ matchId, isHost }) => {
             {squares}
           </>
         ) : (
-          squares
+          <>
+            {promotionPopup && (
+              <div className="absolute flex items-center justify-center left-[35%] top-[40%] w-[30%] h-[20%] bg-[var(--primary)] ">
+                <div className="flex justify-around w-full">
+                  {defaultPieces.map((piece, index) => {
+                    const Icon = piece?.image;
+                    return (
+                      <div key={index} className="flex flex-col items-center">
+                        {piece.type}
+                        <motion.div
+                          onClick={() => promotePawn(piece)}
+                          className="text-3xl mt-3 cursor-pointer"
+                          transition={{ type: "spring" }}
+                          initial={{ scale: 1 }}
+                          whileHover={{ scale: 2 }}
+                        >
+                          <Icon style={piece.style} />
+                        </motion.div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+            {squares}
+          </>
         )}
       </div>
       <div>
