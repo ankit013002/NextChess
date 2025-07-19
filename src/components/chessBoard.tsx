@@ -12,7 +12,6 @@ const ChessBoard = ({ matchId, isHost }) => {
   const BOARD_SIZE = 8;
   const boardRef = useRef<HTMLDivElement>(null);
   const [turn, setTurn] = useState<"WHITE" | "BLACK">("WHITE");
-  const [check, setCheck] = useState<boolean>(false);
   const [pieces, setPieces] = useState(chessPieces);
   const peerConnectionRef = useRef<RTCPeerConnection>(null);
   const dataChannelRef = useRef<RTCDataChannel>(null);
@@ -65,8 +64,6 @@ const ChessBoard = ({ matchId, isHost }) => {
 
       const nextTurn = turn === "WHITE" ? "BLACK" : "WHITE";
       setTurn(nextTurn);
-
-      setCheck(isInCheck(nextTurn, next));
 
       return next;
     });
@@ -214,15 +211,13 @@ const ChessBoard = ({ matchId, isHost }) => {
               dragMomentum={false}
               dragElastic={0.1}
               dragTransition={{ bounceStiffness: 300, bounceDamping: 10 }}
-              whileDrag={{ scale: 1.1, zIndex: 1000 }}
+              whileDrag={{ scale: 1.5, zIndex: 1000 }}
               onDragStart={(_, info) => {
-                // Only set dragging state if we have valid pointer info
                 if (info.point) {
                   handleDragStart(piece.id);
                 }
               }}
               onDragEnd={(e, info) => {
-                // Only handle if this piece is currently being dragged
                 if (draggingIdRef.current === piece.id && info.point) {
                   handleDragEnd(e as MouseEvent | TouchEvent, info);
                 }
@@ -235,7 +230,7 @@ const ChessBoard = ({ matchId, isHost }) => {
                 stiffness: 300,
                 damping: 20,
               }}
-              className="cursor-grab text-5xl select-none active:cursor-grabbing"
+              className="cursor-grab text-5xl select-none active:cursor-grabbing will-change-transform backface-hidden"
               style={{
                 touchAction: "none",
                 userSelect: "none",
