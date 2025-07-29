@@ -1,6 +1,13 @@
-export const sendMove = (move: string, dataChannelRef, setLog) => {
+export type PiecesStateDeltaType = {
+  pieceId: number;
+  moveTo: number;
+};
+
+export const sendMove = (
+  piecesDelta: PiecesStateDeltaType,
+  dataChannelRef: React.RefObject<RTCDataChannel | null>
+) => {
   if (dataChannelRef.current?.readyState === "open") {
-    dataChannelRef.current.send(move);
-    setLog((prevLog) => [...prevLog, `You: ${move}`]);
+    dataChannelRef.current.send(JSON.stringify(piecesDelta));
   }
 };

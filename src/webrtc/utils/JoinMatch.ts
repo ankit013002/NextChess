@@ -1,7 +1,4 @@
-import { useState, useRef } from "react";
-import { initializeApp } from "firebase/app";
 import {
-  getFirestore,
   doc,
   collection,
   setDoc,
@@ -11,14 +8,16 @@ import {
 } from "firebase/firestore";
 import { db, rtcConfig } from "../ChessClient";
 import { setupDataChannel } from "./SetUpDataChannel";
+import { ChessPiece } from "@/utils/pieces";
 
 export const joinMatch = async (
-  joinMatchId,
-  peerConnectionRef,
-  dataChannelRef,
-  setLog
+  joinMatchId: string,
+  peerConnectionRef: React.RefObject<RTCPeerConnection | null>,
+  dataChannelRef: React.RefObject<RTCDataChannel | null>,
+  setPieces: React.Dispatch<React.SetStateAction<ChessPiece[]>>
 ) => {
   console.log(joinMatchId);
+
   if (!joinMatchId.trim()) {
     return alert("Please enter a match ID before joining.");
   }
@@ -35,15 +34,13 @@ export const joinMatch = async (
   peerConnection.ondatachannel = (e) => {
     const dc = e.channel;
     dataChannelRef.current = dc;
-    setupDataChannel(dc, setLog);
+    setupDataChannel(dc, setPieces);
 
     dc.onopen = () => {
       console.log("🟢 DataChannel OPEN (joiner)!");
-      setLog((l) => [...l, "🔗 Channel is open — ready to send moves!"]);
     };
     dc.onclose = () => {
       console.log("⚪️ DataChannel CLOSED");
-      setLog((l) => [...l, "⚪️ Channel closed"]);
     };
   };
 

@@ -1,17 +1,27 @@
-import { useState, useRef } from "react";
-import { initializeApp } from "firebase/app";
-import {
-  getFirestore,
-  doc,
-  collection,
-  setDoc,
-  getDoc,
-  onSnapshot,
-  addDoc,
-} from "firebase/firestore";
-import { createMatch, setupDataChannel } from "./utils/CreateMatch";
+import { ChessPiece } from "@/utils/pieces";
+import { PiecesStateDeltaType } from "./SendMove";
 
-export const setupDataChannel = (dataChannel: RTCDataChannel, setLog) => {
-  dataChannel.onmessage = (e) =>
-    setLog((prevLog) => [...prevLog, `Peer: ${e.data}`]);
+export const setupDataChannel = (
+  dataChannel: RTCDataChannel,
+  setPieces: React.Dispatch<React.SetStateAction<ChessPiece[]>>
+) => {
+  dataChannel.onmessage = (e) => {
+    try {
+      const incoming = JSON.parse(e.data as string) as PiecesStateDeltaType;
+      console.log("REVIEVED PIECES: ", incoming);
+      setPieces((prevState) => {
+        const newState = [...prevState];
+        const pieceOfInterest = newState.find(
+          (piece) => piece.id === incoming.pieceId
+        );
+        if (!pieceOfInterest) {
+          return prevState;
+        }
+        pieceOfInterest.position = incoming.moveTo;
+        return newState;
+      });
+    } catch (error) {
+      console.error("Failed to aprse incoming message: ", error);
+    }
+  };
 };

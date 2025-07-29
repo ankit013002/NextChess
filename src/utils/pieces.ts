@@ -19,6 +19,9 @@ export interface ChessPiece {
 
 export interface DefaultChessPiece {
   type: "rook" | "knight" | "bishop" | "queen" | "king";
+  style: {
+    color: string;
+  };
   image: IconType;
 }
 
@@ -172,7 +175,7 @@ export const chessPieces: ChessPiece[] = [
   },
 ];
 
-export const defaultPieces = [
+export const defaultPieces: DefaultChessPiece[] = [
   {
     type: "rook",
     style: { color: "var(--color-light-square)" },

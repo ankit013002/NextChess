@@ -1,22 +1,19 @@
-import { useState, useRef } from "react";
-import { initializeApp } from "firebase/app";
 import {
-  getFirestore,
   doc,
   collection,
   setDoc,
-  getDoc,
   onSnapshot,
   addDoc,
 } from "firebase/firestore";
 import { db, rtcConfig } from "../ChessClient";
 import { setupDataChannel } from "./SetUpDataChannel";
+import { ChessPiece } from "@/utils/pieces";
 
 export const createMatch = async (
-  peerConnectionRef,
-  dataChannelRef,
-  hostMatchId,
-  setLog
+  peerConnectionRef: React.RefObject<RTCPeerConnection | null>,
+  dataChannelRef: React.RefObject<RTCDataChannel | null>,
+  hostMatchId: string,
+  setPieces: React.Dispatch<React.SetStateAction<ChessPiece[]>>
 ) => {
   const peerConnection = new RTCPeerConnection(rtcConfig);
   peerConnection.oniceconnectionstatechange = () => {
@@ -26,15 +23,13 @@ export const createMatch = async (
 
   const dataChannel = peerConnection.createDataChannel("chess");
   dataChannelRef.current = dataChannel;
-  setupDataChannel(dataChannel, setLog);
+  setupDataChannel(dataChannel, setPieces);
 
   dataChannel.onopen = () => {
     console.log("🟢 DataChannel OPEN (host)!");
-    setLog((l) => [...l, "🔗 Channel is open — ready to send moves!"]);
   };
   dataChannel.onclose = () => {
     console.log("⚪️ DataChannel CLOSED");
-    setLog((l) => [...l, "⚪️ Channel closed"]);
   };
 
   const matchDocument = doc(collection(db, "matches"), `${hostMatchId}`);

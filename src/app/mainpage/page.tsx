@@ -1,6 +1,5 @@
 import HostJoinControl from "@/components/hostJoinControl";
-import { useSearchParams } from "next/navigation";
-import React, { useState } from "react";
+import React from "react";
 
 const page = () => {
   return (

@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useRef, useState } from "react";
-import { motion, AnimatePresence, PanInfo, scale } from "framer-motion";
+import { motion, AnimatePresence, PanInfo } from "framer-motion";
 import {
   ChessPiece,
   chessPieces,
@@ -11,19 +11,23 @@ import {
 import { checkMovementForPiece } from "@/utils/checkMovementForPiece";
 import { createMatch } from "@/webrtc/utils/CreateMatch";
 import { joinMatch } from "@/webrtc/utils/JoinMatch";
-import { sendMove } from "@/webrtc/utils/SendMove";
+import { PiecesStateDeltaType, sendMove } from "@/webrtc/utils/SendMove";
 
 const goodColor = "color:green; font-size:20px;";
 const badColor = "color:red; font-size:20px;";
 
-const ChessBoard = ({ matchId, isHost }) => {
+interface ChessBoardProps {
+  matchId: number;
+  isHost: string;
+}
+
+const ChessBoard = ({ matchId, isHost }: ChessBoardProps) => {
   const BOARD_SIZE = 8;
   const boardRef = useRef<HTMLDivElement>(null);
   const [turn, setTurn] = useState<"WHITE" | "BLACK">("WHITE");
   const [pieces, setPieces] = useState(chessPieces);
   const peerConnectionRef = useRef<RTCPeerConnection>(null);
   const dataChannelRef = useRef<RTCDataChannel>(null);
-  const [log, setLog] = useState<string[]>([]);
   const draggingIdRef = useRef<number | null>(null);
   const [checkMate, setCheckMate] = useState(false);
   const [promotionPopup, setPromotionPopup] = useState(false);
@@ -53,10 +57,20 @@ const ChessBoard = ({ matchId, isHost }) => {
   useEffect(() => {
     if (isHost === "true") {
       console.log("Creating match as host");
-      createMatch(peerConnectionRef, dataChannelRef, matchId, setLog);
+      createMatch(
+        peerConnectionRef,
+        dataChannelRef,
+        matchId.toString(),
+        setPieces
+      );
     } else {
       console.log("Joining match as guest");
-      joinMatch(matchId, peerConnectionRef, dataChannelRef, setLog);
+      joinMatch(
+        matchId.toString(),
+        peerConnectionRef,
+        dataChannelRef,
+        setPieces
+      );
     }
   }, [isHost, matchId]);
 
@@ -91,7 +105,7 @@ const ChessBoard = ({ matchId, isHost }) => {
   }
 
   function handleDragEnd(_event: MouseEvent | TouchEvent, info: PanInfo) {
-    if (draggingIdRef.current == null || !boardRef.current) {
+    if (draggingIdRef.current == null || !boardRef.current || !dataChannelRef) {
       console.warn("Drag end called but missing required refs");
       draggingIdRef.current = null;
       return;
@@ -169,6 +183,15 @@ const ChessBoard = ({ matchId, isHost }) => {
     } else {
       console.log("%c YOU'RE GOOD", goodColor);
     }
+
+    const piecesStateDelta: PiecesStateDeltaType = {
+      pieceId: piece.id,
+      moveTo: to,
+    };
+
+    sendMove(piecesStateDelta, dataChannelRef);
+
+    // sendMove(pieces, dataChannelRef);
 
     if (
       !(
@@ -254,10 +277,6 @@ const ChessBoard = ({ matchId, isHost }) => {
 
   function dragConstraint(piece: ChessPiece) {
     const allowed = piece.side === turn;
-    console
-      .log
-      // `Drag constraint for piece ${piece.id}: ${allowed} (side: ${piece.side}, turn: ${turn})`
-      ();
     return allowed;
   }
 
@@ -283,7 +302,6 @@ const ChessBoard = ({ matchId, isHost }) => {
             : "bg-[var(--color-dark-square)]"
         } flex justify-center items-center`}
       >
-        {idx}
         <AnimatePresence>
           {Icon && piece && (
             <motion.div
@@ -302,7 +320,6 @@ const ChessBoard = ({ matchId, isHost }) => {
               }}
               onDragEnd={(e, info) => {
                 if (draggingIdRef.current === piece.id && info.point) {
-                  console.log(draggingIdRef);
                   handleDragEnd(e as MouseEvent | TouchEvent, info);
                 }
               }}
@@ -381,11 +398,11 @@ const ChessBoard = ({ matchId, isHost }) => {
         )}
       </div>
       <div>
-        {log?.map((log, index) => (
+        {/* {log?.map((log, index) => (
           <div key={index}>{log}</div>
-        ))}
+        ))} */}
         <button
-          onClick={() => sendMove("MY MESSAGE", dataChannelRef, setLog)}
+          onClick={() => sendMove({ pieceId: 8, moveTo: 16 }, dataChannelRef)}
           className="btn"
         >
           Send Move

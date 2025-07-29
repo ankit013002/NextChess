@@ -2,16 +2,8 @@
 
 import { useState, useRef } from "react";
 import { initializeApp } from "firebase/app";
-import {
-  getFirestore,
-  doc,
-  collection,
-  setDoc,
-  getDoc,
-  onSnapshot,
-  addDoc,
-} from "firebase/firestore";
-import { createMatch, setupDataChannel } from "./utils/CreateMatch";
+import { getFirestore } from "firebase/firestore";
+import { createMatch } from "./utils/CreateMatch";
 import { joinMatch } from "./utils/JoinMatch";
 import { sendMove } from "./utils/SendMove";
 
@@ -72,11 +64,6 @@ export default function ChessClient() {
         value={joinMatchId}
         onKeyDown={(e) => {
           if (e.key === "Enter") {
-            sendMove(
-              (e.target as HTMLInputElement).value,
-              dataChannelRef,
-              setLog
-            );
             (e.target as HTMLInputElement).value = "";
           }
         }}
