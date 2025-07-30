@@ -14,7 +14,8 @@ export const joinMatch = async (
   joinMatchId: string,
   peerConnectionRef: React.RefObject<RTCPeerConnection | null>,
   dataChannelRef: React.RefObject<RTCDataChannel | null>,
-  setPieces: React.Dispatch<React.SetStateAction<ChessPiece[]>>
+  setPieces: React.Dispatch<React.SetStateAction<ChessPiece[]>>,
+  setTurn: React.Dispatch<React.SetStateAction<"WHITE" | "BLACK">>
 ) => {
   console.log(joinMatchId);
 
@@ -34,7 +35,7 @@ export const joinMatch = async (
   peerConnection.ondatachannel = (e) => {
     const dc = e.channel;
     dataChannelRef.current = dc;
-    setupDataChannel(dc, setPieces);
+    setupDataChannel(dc, setPieces, setTurn);
 
     dc.onopen = () => {
       console.log("🟢 DataChannel OPEN (joiner)!");

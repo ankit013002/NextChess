@@ -61,7 +61,8 @@ const ChessBoard = ({ matchId, isHost }: ChessBoardProps) => {
         peerConnectionRef,
         dataChannelRef,
         matchId.toString(),
-        setPieces
+        setPieces,
+        setTurn
       );
     } else {
       console.log("Joining match as guest");
@@ -69,7 +70,8 @@ const ChessBoard = ({ matchId, isHost }: ChessBoardProps) => {
         matchId.toString(),
         peerConnectionRef,
         dataChannelRef,
-        setPieces
+        setPieces,
+        setTurn
       );
     }
   }, [isHost, matchId]);
@@ -133,7 +135,6 @@ const ChessBoard = ({ matchId, isHost }: ChessBoardProps) => {
     }
 
     if (to === piece.position) {
-      // console.log("Piece dropped on same square");
       draggingIdRef.current = null;
       return;
     }
@@ -145,6 +146,11 @@ const ChessBoard = ({ matchId, isHost }: ChessBoardProps) => {
       pieceInToTile,
       pieces
     );
+
+    console.log("PIECE: ", piece);
+    console.log("to: ", to);
+    console.log("pieces: ", pieces);
+    console.log("pieceInToTile: ", pieceInToTile);
 
     if (!isValidMovement) {
       console.log("Invalid movement according to piece rules");
@@ -187,6 +193,10 @@ const ChessBoard = ({ matchId, isHost }: ChessBoardProps) => {
     const piecesStateDelta: PiecesStateDeltaType = {
       pieceId: piece.id,
       moveTo: to,
+      turn: turn === "WHITE" ? "BLACK" : "WHITE",
+      promotion: piece.type,
+      check: isInCheck(turn, pieces),
+      checkMate: checkMate,
     };
 
     sendMove(piecesStateDelta, dataChannelRef);
@@ -302,6 +312,7 @@ const ChessBoard = ({ matchId, isHost }: ChessBoardProps) => {
             : "bg-[var(--color-dark-square)]"
         } flex justify-center items-center`}
       >
+        {idx}
         <AnimatePresence>
           {Icon && piece && (
             <motion.div
