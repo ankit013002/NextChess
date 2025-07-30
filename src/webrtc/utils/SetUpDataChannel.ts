@@ -1,5 +1,6 @@
 import { ChessPiece } from "@/utils/pieces";
 import { PiecesStateDeltaType } from "./SendMove";
+import { GetImageFromType } from "@/utils/GetImageFromType";
 
 export const setupDataChannel = (
   dataChannel: RTCDataChannel,
@@ -11,30 +12,39 @@ export const setupDataChannel = (
       const incoming = JSON.parse(e.data as string) as PiecesStateDeltaType;
       console.log("REVIEVED PIECES: ", incoming);
       setPieces((prevState) => {
-        console.log("INCOMING: ", incoming);
+        console.log("Incoming: ", incoming);
         const newState = [...prevState];
 
-        const eliminatedPiece = newState.find(
-          (piece) => piece.position == incoming.moveTo
-        );
+        const { pieceId, pieceMoved, piecePromoted } = incoming;
 
-        if (eliminatedPiece) {
-          eliminatedPiece.position = -1;
-        }
+        const pieceOfInterest = newState.find((piece) => piece.id === pieceId);
 
-        setTurn(incoming.turn);
-
-        const pieceOfInterest = newState.find(
-          (piece) => piece.id === incoming.pieceId
-        );
         if (!pieceOfInterest) {
           return prevState;
         }
 
-        pieceOfInterest.position = incoming.moveTo;
+        console.log("Before Promotion");
 
-        if (pieceOfInterest.type !== incoming.promotion) {
-          pieceOfInterest.type = incoming.promotion;
+        if (piecePromoted) {
+          pieceOfInterest.type = piecePromoted.promotion;
+          pieceOfInterest.image = GetImageFromType(piecePromoted.promotion);
+          return newState;
+        }
+
+        console.log("Past Promotion");
+
+        if (pieceMoved) {
+          const eliminatedPiece = newState.find(
+            (piece) => piece.position == pieceMoved.moveTo
+          );
+
+          if (eliminatedPiece != undefined) {
+            eliminatedPiece.position = -1;
+          }
+
+          pieceOfInterest.position = pieceMoved.moveTo;
+
+          setTurn(pieceMoved.turn);
         }
 
         return newState;

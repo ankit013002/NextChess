@@ -18,7 +18,7 @@ export interface ChessPiece {
 }
 
 export interface DefaultChessPiece {
-  type: "rook" | "knight" | "bishop" | "queen" | "king";
+  type: "rook" | "knight" | "bishop" | "queen";
   style: {
     color: string;
   };

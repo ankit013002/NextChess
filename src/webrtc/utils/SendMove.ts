@@ -1,10 +1,16 @@
+import { IconType } from "react-icons";
+
 export type PiecesStateDeltaType = {
   pieceId: number;
-  moveTo: number;
-  turn: "WHITE" | "BLACK";
-  promotion: "rook" | "knight" | "bishop" | "queen" | "king" | "pawn";
-  check: boolean;
-  checkMate: boolean;
+  pieceMoved: {
+    moveTo: number;
+    turn: "WHITE" | "BLACK";
+    check: boolean;
+    checkMate: boolean;
+  } | null;
+  piecePromoted: {
+    promotion: "rook" | "knight" | "bishop" | "queen";
+  } | null;
 };
 
 export const sendMove = (

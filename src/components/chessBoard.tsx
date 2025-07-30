@@ -190,19 +190,6 @@ const ChessBoard = ({ matchId, isHost }: ChessBoardProps) => {
       console.log("%c YOU'RE GOOD", goodColor);
     }
 
-    const piecesStateDelta: PiecesStateDeltaType = {
-      pieceId: piece.id,
-      moveTo: to,
-      turn: turn === "WHITE" ? "BLACK" : "WHITE",
-      promotion: piece.type,
-      check: isInCheck(turn, pieces),
-      checkMate: checkMate,
-    };
-
-    sendMove(piecesStateDelta, dataChannelRef);
-
-    // sendMove(pieces, dataChannelRef);
-
     if (
       !(
         piece.type == "pawn" &&
@@ -211,6 +198,19 @@ const ChessBoard = ({ matchId, isHost }: ChessBoardProps) => {
       )
     )
       draggingIdRef.current = null;
+
+    const piecesStateDelta: PiecesStateDeltaType = {
+      pieceId: piece.id,
+      pieceMoved: {
+        moveTo: to,
+        turn: turn === "WHITE" ? "BLACK" : "WHITE",
+        check: isInCheck(turn, pieces),
+        checkMate: checkMate,
+      },
+      piecePromoted: null,
+    };
+
+    sendMove(piecesStateDelta, dataChannelRef);
   }
 
   // Need to fix issue where one promotion after another doesn't work
@@ -232,6 +232,14 @@ const ChessBoard = ({ matchId, isHost }: ChessBoardProps) => {
     );
 
     setPromotionPopup(false);
+    const piecesStateDelta: PiecesStateDeltaType = {
+      pieceId: pawnId,
+      piecePromoted: {
+        promotion: selectedPiece.type,
+      },
+      pieceMoved: null,
+    };
+    sendMove(piecesStateDelta, dataChannelRef);
     draggingIdRef.current = null;
   }
 
