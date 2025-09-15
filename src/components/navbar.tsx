@@ -41,7 +41,7 @@ const Navbar = () => {
       </div>
       <div className="navbar-center">
         <Link href="/" className="btn btn-ghost text-xl">
-          daisyUI
+          NextChess
         </Link>
       </div>
       <div className="navbar-end">

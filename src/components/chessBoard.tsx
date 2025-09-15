@@ -232,6 +232,8 @@ const ChessBoard = ({ matchId, isHost }: ChessBoardProps) => {
     );
 
     setPromotionPopup(false);
+    draggingIdRef.current = null;
+
     const piecesStateDelta: PiecesStateDeltaType = {
       pieceId: pawnId,
       piecePromoted: {
@@ -240,7 +242,6 @@ const ChessBoard = ({ matchId, isHost }: ChessBoardProps) => {
       pieceMoved: null,
     };
     sendMove(piecesStateDelta, dataChannelRef);
-    draggingIdRef.current = null;
   }
 
   function isInCheckMate() {
@@ -320,7 +321,6 @@ const ChessBoard = ({ matchId, isHost }: ChessBoardProps) => {
             : "bg-[var(--color-dark-square)]"
         } flex justify-center items-center`}
       >
-        {idx}
         <AnimatePresence>
           {Icon && piece && (
             <motion.div
@@ -420,12 +420,12 @@ const ChessBoard = ({ matchId, isHost }: ChessBoardProps) => {
         {/* {log?.map((log, index) => (
           <div key={index}>{log}</div>
         ))} */}
-        <button
+        {/* <button
           onClick={() => sendMove({ pieceId: 8, moveTo: 16 }, dataChannelRef)}
           className="btn"
         >
           Send Move
-        </button>
+        </button> */}
       </div>
     </div>
   );
