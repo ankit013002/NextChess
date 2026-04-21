@@ -239,7 +239,22 @@ const ChessBoard = ({ matchId, isHost }: ChessBoardProps) => {
     }
 
     // ── Check that this move doesn't leave own king in check ─────────────────
-    if (wouldLeaveInCheck(turn, pieces, piece.id, to, enPassantTarget)) {
+    // For castling, include the rook in the simulation so it can block attacks
+    // on the king's destination square (wouldLeaveInCheck only moves the king).
+    if (castlingRookId !== null) {
+      const castleBoard = computePostMoveBoard(
+        pieces,
+        piece.id,
+        to,
+        enPassantTarget,
+        castlingRookId,
+        castlingRookTo
+      );
+      if (isInCheck(turn, castleBoard)) {
+        draggingIdRef.current = null;
+        return;
+      }
+    } else if (wouldLeaveInCheck(turn, pieces, piece.id, to, enPassantTarget)) {
       draggingIdRef.current = null;
       return;
     }

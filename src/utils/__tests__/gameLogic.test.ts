@@ -279,6 +279,28 @@ describe("isInStalemate", () => {
   });
 });
 
+// ── computePostMoveBoard with castling — rook blocks post-castle attack ───────
+
+describe("computePostMoveBoard castling rook shielding", () => {
+  it("rook at col 5 blocks a rook attack aimed at king at col 6 after kingside castle", () => {
+    // WHITE king at pos 4 (row 0, col 4), WHITE rook at pos 7 (row 0, col 7)
+    // BLACK rook at pos 0 (row 0, col 0) — threatens the entire rank
+    // After kingside castle: king → pos 6, rook → pos 5 (blocks attack from col 0)
+    const wKing = makePiece({ id: 1, type: "king", side: "WHITE", position: 4 });
+    const wRook = makePiece({ id: 2, type: "rook", side: "WHITE", position: 7 });
+    const bRook = makePiece({ id: 3, type: "rook", side: "BLACK", position: 0 });
+    const b = [wKing, wRook, bRook];
+
+    // Without the rook move: king at 6, rook still at 7 → bRook attacks king through cols 1-5
+    const simWithoutRook = computePostMoveBoard(b, 1, 6, null, null, null);
+    expect(isInCheck("WHITE", simWithoutRook)).toBe(true); // would falsely block castling
+
+    // With the rook move: king at 6, rook at 5 → rook blocks bRook's attack at col 5
+    const simWithRook = computePostMoveBoard(b, 1, 6, null, 2, 5);
+    expect(isInCheck("WHITE", simWithRook)).toBe(false); // castling is actually safe
+  });
+});
+
 // ── Integration: full move sequences ─────────────────────────────────────────
 
 describe("integration: move sequences", () => {
