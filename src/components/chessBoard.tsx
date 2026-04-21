@@ -50,6 +50,13 @@ const ChessBoard = ({ matchId, isHost }: ChessBoardProps) => {
   const peerConnectionRef = useRef<RTCPeerConnection>(null);
   const dataChannelRef = useRef<RTCDataChannel>(null);
   const draggingIdRef = useRef<number | null>(null);
+  const pendingPromotionRef = useRef<{
+    pieceId: number;
+    to: number;
+    enPassantCapturedId: number | null;
+    castlingRookId: number | null;
+    castlingRookTo: number | null;
+  } | null>(null);
 
   // ── WebRTC setup ──────────────────────────────────────────────────────────
   useEffect(() => {
@@ -277,6 +284,33 @@ const ChessBoard = ({ matchId, isHost }: ChessBoardProps) => {
       newEnPassantTarget = piece.position + dir * 8;
     }
 
+    // ── Pawn promotion — apply move but defer turn flip and peer notification ──
+    const isPromotion = piece.type === "pawn" && (to < 8 || to >= 56);
+    if (isPromotion) {
+      // Move the pawn but keep the turn unchanged so the opponent cannot move
+      // while the promoting player chooses their piece.
+      applyMove(
+        piece.id,
+        to,
+        null, // promotion resets en passant
+        enPassantCapturedId,
+        castlingRookId,
+        castlingRookTo,
+        turn // intentionally keep turn — promotePawn will flip it
+      );
+      pendingPromotionRef.current = {
+        pieceId: piece.id,
+        to,
+        enPassantCapturedId,
+        castlingRookId,
+        castlingRookTo,
+      };
+      setPromotingSide(turn);
+      setPromotionPopup(true);
+      draggingIdRef.current = null;
+      return;
+    }
+
     // ── Compute post-move board for checkmate/stalemate detection ─────────────
     const postBoard = computePostMoveBoard(
       pieces,
@@ -304,16 +338,7 @@ const ChessBoard = ({ matchId, isHost }: ChessBoardProps) => {
 
     if (mateDetected) setCheckMate(true);
     if (stalemateDetected) setStalemate(true);
-
-    // ── Pawn promotion ────────────────────────────────────────────────────────
-    const isPromotion = piece.type === "pawn" && (to < 8 || to >= 56);
-    if (isPromotion) {
-      setPromotingSide(turn);
-      setPromotionPopup(true);
-      // Keep draggingIdRef set — promotePawn will clear it
-    } else {
-      draggingIdRef.current = null;
-    }
+    draggingIdRef.current = null;
 
     // ── Send move to peer ─────────────────────────────────────────────────────
     const delta: PiecesStateDeltaType = {
@@ -336,32 +361,60 @@ const ChessBoard = ({ matchId, isHost }: ChessBoardProps) => {
 
   // ── Promotion ─────────────────────────────────────────────────────────────
   function promotePawn(selectedPiece: DefaultChessPiece) {
-    const pawnId = draggingIdRef.current;
-    if (pawnId == null) return;
+    const pending = pendingPromotionRef.current;
+    if (!pending) return;
 
-    const promotionColor =
-      promotingSide === "WHITE"
-        ? { color: "white" }
-        : { color: "black" };
+    const { pieceId, to, enPassantCapturedId, castlingRookId, castlingRookTo } = pending;
+    const movedSide = promotingSide;
+    const nextTurn: "WHITE" | "BLACK" = movedSide === "WHITE" ? "BLACK" : "WHITE";
+    const promotionColor = movedSide === "WHITE" ? { color: "white" } : { color: "black" };
 
+    // pieces state here already has the pawn at `to` (moved in handleDragEnd).
+    // Build the fully-promoted board to detect check/mate/stalemate correctly.
+    const postPromotionBoard = pieces.map((p) =>
+      p.id === pieceId
+        ? { ...p, type: selectedPiece.type, image: selectedPiece.image }
+        : p
+    );
+
+    const mateDetected = isInCheckMate(postPromotionBoard, movedSide, null);
+    const stalemateDetected = !mateDetected && isInStalemate(postPromotionBoard, movedSide, null);
+    const checkDetected = isInCheck(nextTurn, postPromotionBoard);
+
+    // Apply the promotion, then flip the turn.
     setPieces((prev) =>
       prev.map((p) =>
-        p.id === pawnId
+        p.id === pieceId
           ? { ...p, type: selectedPiece.type, image: selectedPiece.image, style: promotionColor }
           : p
       )
     );
+    setTurn(nextTurn);
+    if (mateDetected) setCheckMate(true);
+    if (stalemateDetected) setStalemate(true);
 
     setPromotionPopup(false);
-    draggingIdRef.current = null;
+    pendingPromotionRef.current = null;
 
+    // Send a single atomic delta with both pieceMoved and piecePromoted so the
+    // peer applies the full promotion in one step.
     const delta: PiecesStateDeltaType = {
-      pieceId: pawnId,
+      pieceId,
+      pieceMoved: {
+        moveTo: to,
+        turn: nextTurn,
+        check: checkDetected,
+        checkMate: mateDetected,
+        stalemate: stalemateDetected,
+        newEnPassantTarget: null,
+        enPassantCapturedId,
+        castlingRookId,
+        castlingRookTo,
+      },
       piecePromoted: {
         promotion: selectedPiece.type,
-        promotingSide,
+        promotingSide: movedSide,
       },
-      pieceMoved: null,
     };
     sendMove(delta, dataChannelRef);
   }

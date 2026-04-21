@@ -17,7 +17,58 @@ export const setupDataChannel = (
 
       const { pieceId, pieceMoved, piecePromoted } = incoming;
 
-      if (piecePromoted) {
+      // Atomic promotion: both fields set → apply move + promotion in one step.
+      if (pieceMoved && piecePromoted) {
+        const {
+          moveTo,
+          turn,
+          checkMate,
+          stalemate,
+          newEnPassantTarget,
+          enPassantCapturedId,
+          castlingRookId,
+          castlingRookTo,
+        } = pieceMoved;
+        const { promotion, promotingSide } = piecePromoted;
+        const promotionColor = promotingSide === "WHITE" ? { color: "white" } : { color: "black" };
+
+        setPieces((prevState) => {
+          const newState = prevState.map((p) => ({ ...p }));
+          const piece = newState.find((p) => p.id === pieceId);
+          if (!piece) return prevState;
+
+          const captured = newState.find((p) => p.position === moveTo && p.id !== pieceId);
+          if (captured) captured.position = -1;
+
+          if (enPassantCapturedId != null) {
+            const epPiece = newState.find((p) => p.id === enPassantCapturedId);
+            if (epPiece) epPiece.position = -1;
+          }
+
+          piece.position = moveTo;
+          piece.hasMoved = true;
+          piece.type = promotion;
+          piece.image = GetImageFromType(promotion);
+          piece.style = promotionColor;
+
+          if (castlingRookId != null && castlingRookTo != null) {
+            const rook = newState.find((p) => p.id === castlingRookId);
+            if (rook) { rook.position = castlingRookTo; rook.hasMoved = true; }
+          }
+
+          return newState;
+        });
+
+        setTurn(turn);
+        setEnPassantTarget(newEnPassantTarget ?? null);
+        if (checkMate) setCheckMate(true);
+        if (stalemate) setStalemate(true);
+        return;
+      }
+
+      // Legacy path: standalone promotion update (no longer sent by current client,
+      // but kept for backward compatibility with older peers).
+      if (piecePromoted && !pieceMoved) {
         setPieces((prevState) => {
           const newState = prevState.map((p) => ({ ...p }));
           const piece = newState.find((p) => p.id === pieceId);
@@ -53,7 +104,7 @@ export const setupDataChannel = (
           if (captured) captured.position = -1;
 
           // En passant capture: remove the pawn that was bypassed
-          if (enPassantCapturedId !== null && enPassantCapturedId !== undefined) {
+          if (enPassantCapturedId != null) {
             const epPiece = newState.find((p) => p.id === enPassantCapturedId);
             if (epPiece) epPiece.position = -1;
           }
@@ -62,7 +113,7 @@ export const setupDataChannel = (
           piece.hasMoved = true;
 
           // Castling: also move the rook
-          if (castlingRookId !== null && castlingRookId !== undefined && castlingRookTo !== null && castlingRookTo !== undefined) {
+          if (castlingRookId != null && castlingRookTo != null) {
             const rook = newState.find((p) => p.id === castlingRookId);
             if (rook) {
               rook.position = castlingRookTo;

@@ -127,10 +127,40 @@ export function isInStalemate(
   for (const piece of enemyPieces) {
     for (let i = 0; i < 64; i++) {
       const targetPiece = board.find((p) => p.position === i && p.position >= 0);
-      if (checkMovementForPiece(piece, i, targetPiece, board, enPassantTarget)) {
-        if (!wouldLeaveInCheck(enemySide, board, piece.id, i, enPassantTarget)) {
-          return false;
+      if (!checkMovementForPiece(piece, i, targetPiece, board, enPassantTarget)) {
+        continue;
+      }
+
+      // Castling requires a full simulation: move both king and rook, and verify
+      // the king does not pass through a square under attack.
+      if (piece.type === "king" && Math.abs(i - piece.position) === 2) {
+        const isKingside = i > piece.position;
+        const rookFromCol = isKingside ? 7 : 0;
+        const rookToCol = isKingside ? 5 : 3;
+        const kingRow = Math.floor(piece.position / 8);
+        const rookFromPos = kingRow * 8 + rookFromCol;
+        const rookToPos = kingRow * 8 + rookToCol;
+        const rook = board.find(
+          (p) =>
+            p.position === rookFromPos &&
+            p.type === "rook" &&
+            p.side === enemySide &&
+            !p.hasMoved
+        );
+        if (!rook) continue;
+
+        const passThroughSquare = piece.position + (isKingside ? 1 : -1);
+        if (wouldLeaveInCheck(enemySide, board, piece.id, passThroughSquare, enPassantTarget)) {
+          continue;
         }
+
+        const castleBoard = computePostMoveBoard(board, piece.id, i, enPassantTarget, rook.id, rookToPos);
+        if (!isInCheck(enemySide, castleBoard)) return false;
+        continue;
+      }
+
+      if (!wouldLeaveInCheck(enemySide, board, piece.id, i, enPassantTarget)) {
+        return false;
       }
     }
   }

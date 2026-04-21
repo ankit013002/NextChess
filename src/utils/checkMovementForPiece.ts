@@ -91,7 +91,17 @@ function checkPawnMovement(
   // Diagonal capture (normal or en passant)
   if (Math.abs(dc) === 1 && dr === dir) {
     if (target && target.side !== piece.side) return true;
-    if (to === enPassantTarget) return true;
+    if (to === enPassantTarget) {
+      const capturedPawnPos = to - dir * 8;
+      const capturedPawn = pieces.find(
+        (p) =>
+          p.position === capturedPawnPos &&
+          p.position >= 0 &&
+          p.side !== piece.side &&
+          p.type === "pawn"
+      );
+      if (capturedPawn) return true;
+    }
   }
 
   return false;
@@ -168,8 +178,10 @@ function checkKingMovement(
     return !pieceInToTile || pieceInToTile.side !== piece.side;
   }
 
-  // Castling: king slides exactly 2 squares horizontally on its starting rank
-  if (dr === 0 && dcAbs === 2 && !piece.hasMoved) {
+  // Castling: king slides exactly 2 squares horizontally on its starting rank.
+  // Destination must be empty (castling is never a capture), and this branch
+  // must not trigger during check evaluation when pieceInToTile is the enemy king.
+  if (dr === 0 && dcAbs === 2 && !piece.hasMoved && !pieceInToTile) {
     const isKingside = dcSigned > 0;
     const rookCol = isKingside ? 7 : 0;
     const kingRow = row(piece.position);
