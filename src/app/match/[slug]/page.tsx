@@ -1,18 +1,16 @@
 import ChessBoard from "@/components/chessBoard";
 import React from "react";
 
-interface ParamsInterface {
-  params: { slug: number; isHost: string };
-  searchParams: { isHost?: string };
+interface PageProps {
+  params: Promise<{ slug: string }>;
+  searchParams: Promise<{ isHost?: string }>;
 }
 
-const page = async ({ params, searchParams }: ParamsInterface) => {
+const page = async ({ params, searchParams }: PageProps) => {
   const { slug } = await params;
-  const matchId = slug;
   const { isHost } = await searchParams;
-  console.log(isHost);
 
-  return <ChessBoard matchId={matchId} isHost={isHost ?? "false"} />;
+  return <ChessBoard matchId={Number(slug)} isHost={isHost ?? "false"} />;
 };
 
 export default page;

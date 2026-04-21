@@ -20,10 +20,6 @@ function board(...pieces: ChessPiece[]): ChessPiece[] {
   return pieces;
 }
 
-function pieceAt(b: ChessPiece[], pos: number) {
-  return b.find((p) => p.position === pos);
-}
-
 // ── PAWN ──────────────────────────────────────────────────────────────────────
 
 describe("pawn movement", () => {

@@ -310,13 +310,8 @@ describe("integration: move sequences", () => {
     // We just manually construct the final mated position
 
     const wKing = makePiece({ id: 1, type: "king", side: "WHITE", position: 4 });
-    const wQueen = makePiece({ id: 2, type: "queen", side: "WHITE", position: 21 }); // row 2, col 5
-    const wBishop = makePiece({ id: 3, type: "bishop", side: "WHITE", position: 26 }); // row 3, col 2 — covers f7 equiv
     const bKing = makePiece({ id: 4, type: "king", side: "BLACK", position: 60 });
-    const bPawn1 = makePiece({ id: 5, type: "pawn", side: "BLACK", position: 52 }); // row 6, col 4
-    const bPawn2 = makePiece({ id: 6, type: "pawn", side: "BLACK", position: 51 }); // row 6, col 3
-    // wQueen at 21 (row 2, col 5) — checks BLACK king at 60 along the diagonal?
-    // Actually let me just use a known mated position:
+    // Use a known mated position:
     // BLACK king at corner (63), WHITE queen at 53 giving check, no escape
     const bKing2 = makePiece({ id: 10, type: "king", side: "BLACK", position: 63 });
     const wQueen2 = makePiece({ id: 11, type: "queen", side: "WHITE", position: 62 }); // adjacent, checks king
