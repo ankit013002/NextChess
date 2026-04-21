@@ -14,7 +14,10 @@ export const createMatch = async (
   dataChannelRef: React.RefObject<RTCDataChannel | null>,
   hostMatchId: string,
   setPieces: React.Dispatch<React.SetStateAction<ChessPiece[]>>,
-  setTurn: React.Dispatch<React.SetStateAction<"WHITE" | "BLACK">>
+  setTurn: React.Dispatch<React.SetStateAction<"WHITE" | "BLACK">>,
+  setEnPassantTarget: React.Dispatch<React.SetStateAction<number | null>>,
+  setCheckMate: React.Dispatch<React.SetStateAction<boolean>>,
+  setStalemate: React.Dispatch<React.SetStateAction<boolean>>
 ) => {
   const peerConnection = new RTCPeerConnection(rtcConfig);
   peerConnection.oniceconnectionstatechange = () => {
@@ -24,7 +27,7 @@ export const createMatch = async (
 
   const dataChannel = peerConnection.createDataChannel("chess");
   dataChannelRef.current = dataChannel;
-  setupDataChannel(dataChannel, setPieces, setTurn);
+  setupDataChannel(dataChannel, setPieces, setTurn, setEnPassantTarget, setCheckMate, setStalemate);
 
   dataChannel.onopen = () => {
     console.log("🟢 DataChannel OPEN (host)!");

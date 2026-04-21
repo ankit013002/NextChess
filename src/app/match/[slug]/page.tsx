@@ -12,7 +12,7 @@ const page = async ({ params, searchParams }: ParamsInterface) => {
   const { isHost } = await searchParams;
   console.log(isHost);
 
-  return <ChessBoard matchId={matchId} isHost={isHost} />;
+  return <ChessBoard matchId={matchId} isHost={isHost ?? "false"} />;
 };
 
 export default page;

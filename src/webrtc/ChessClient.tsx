@@ -1,11 +1,7 @@
 "use client";
 
-import { useState, useRef } from "react";
 import { initializeApp } from "firebase/app";
 import { getFirestore } from "firebase/firestore";
-import { createMatch } from "./utils/CreateMatch";
-import { joinMatch } from "./utils/JoinMatch";
-import { sendMove } from "./utils/SendMove";
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY!,
@@ -25,57 +21,3 @@ export const rtcConfig = {
     { urls: ["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302"] },
   ],
 };
-
-export default function ChessClient() {
-  const [hostMatchId, setHostMatchId] = useState("");
-  const [joinMatchId, setJoinMatchId] = useState("");
-  const [log, setLog] = useState<string[]>([]);
-  const peerConnectionRef = useRef<RTCPeerConnection>(null);
-  const dataChannelRef = useRef<RTCDataChannel>(null);
-
-  return (
-    <div className="p-6 space-y-4">
-      <button
-        onClick={() =>
-          createMatch(peerConnectionRef, dataChannelRef, hostMatchId, setLog)
-        }
-        className="btn"
-      >
-        Host Game
-      </button>
-      <div>
-        <input
-          value={hostMatchId}
-          onChange={(e) => setHostMatchId(e.target.value)}
-          placeholder="Room ID"
-          className="input"
-        />
-        <button
-          onClick={() =>
-            joinMatch(joinMatchId, peerConnectionRef, dataChannelRef, setLog)
-          }
-          className="btn ml-2"
-        >
-          Join
-        </button>
-      </div>
-      <input
-        placeholder="e.g. e2e4"
-        value={joinMatchId}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") {
-            (e.target as HTMLInputElement).value = "";
-          }
-        }}
-        onChange={(e) => setJoinMatchId(e.target.value)}
-        className="input"
-      />
-      <ul className="list-disc ml-5">
-        {log.map((l, i) => (
-          <li key={i}>{l}</li>
-        ))}
-      </ul>
-      <button className="btn">Send Move</button>
-    </div>
-  );
-}

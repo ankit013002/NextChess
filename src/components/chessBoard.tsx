@@ -9,106 +9,141 @@ import {
   defaultPieces,
 } from "@/utils/pieces";
 import { checkMovementForPiece } from "@/utils/checkMovementForPiece";
+import {
+  isInCheck,
+  wouldLeaveInCheck,
+  computePostMoveBoard,
+  isInCheckMate,
+  isInStalemate,
+} from "@/utils/gameLogic";
 import { createMatch } from "@/webrtc/utils/CreateMatch";
 import { joinMatch } from "@/webrtc/utils/JoinMatch";
 import { PiecesStateDeltaType, sendMove } from "@/webrtc/utils/SendMove";
-
-const goodColor = "color:green; font-size:20px;";
-const badColor = "color:red; font-size:20px;";
 
 interface ChessBoardProps {
   matchId: number;
   isHost: string;
 }
 
+const BOARD_SIZE = 8;
+
+function rowOf(pos: number) {
+  return Math.floor(pos / 8);
+}
+function colOf(pos: number) {
+  return pos % 8;
+}
+
 const ChessBoard = ({ matchId, isHost }: ChessBoardProps) => {
-  const BOARD_SIZE = 8;
   const boardRef = useRef<HTMLDivElement>(null);
+  const playerSide: "WHITE" | "BLACK" = isHost === "true" ? "WHITE" : "BLACK";
+  const flipBoard = playerSide === "BLACK";
+
   const [turn, setTurn] = useState<"WHITE" | "BLACK">("WHITE");
-  const [pieces, setPieces] = useState(chessPieces);
+  const [pieces, setPieces] = useState<ChessPiece[]>(chessPieces);
+  const [enPassantTarget, setEnPassantTarget] = useState<number | null>(null);
+  const [checkMate, setCheckMate] = useState(false);
+  const [stalemate, setStalemate] = useState(false);
+  const [promotionPopup, setPromotionPopup] = useState(false);
+  const [promotingSide, setPromotingSide] = useState<"WHITE" | "BLACK">("WHITE");
+
   const peerConnectionRef = useRef<RTCPeerConnection>(null);
   const dataChannelRef = useRef<RTCDataChannel>(null);
   const draggingIdRef = useRef<number | null>(null);
-  const [checkMate, setCheckMate] = useState(false);
-  const [promotionPopup, setPromotionPopup] = useState(false);
 
-  useEffect(() => {
-    function onCancel() {
-      if (draggingIdRef.current !== null) {
-        console.log("Pointer cancelled, resetting drag state");
-        draggingIdRef.current = null;
-      }
-    }
-    function onUp() {
-      if (draggingIdRef.current !== null) {
-        // console.log("Pointer up detected");
-      }
-    }
-
-    window.addEventListener("pointercancel", onCancel, { passive: true });
-    window.addEventListener("pointerup", onUp, { passive: true });
-
-    return () => {
-      window.removeEventListener("pointercancel", onCancel);
-      window.removeEventListener("pointerup", onUp);
-    };
-  }, []);
-
+  // ── WebRTC setup ──────────────────────────────────────────────────────────
   useEffect(() => {
     if (isHost === "true") {
-      console.log("Creating match as host");
       createMatch(
         peerConnectionRef,
         dataChannelRef,
         matchId.toString(),
         setPieces,
-        setTurn
+        setTurn,
+        setEnPassantTarget,
+        setCheckMate,
+        setStalemate
       );
     } else {
-      console.log("Joining match as guest");
       joinMatch(
         matchId.toString(),
         peerConnectionRef,
         dataChannelRef,
         setPieces,
-        setTurn
+        setTurn,
+        setEnPassantTarget,
+        setCheckMate,
+        setStalemate
       );
     }
   }, [isHost, matchId]);
 
-  function movePiece(pieceId: number, to: number) {
+  // ── Pointer cancel cleanup ─────────────────────────────────────────────────
+  useEffect(() => {
+    function onCancel() {
+      draggingIdRef.current = null;
+    }
+    window.addEventListener("pointercancel", onCancel, { passive: true });
+    return () => window.removeEventListener("pointercancel", onCancel);
+  }, []);
+
+  // ── Move execution ────────────────────────────────────────────────────────
+  function applyMove(
+    pieceId: number,
+    to: number,
+    newEnPassantTarget: number | null,
+    enPassantCapturedId: number | null,
+    castlingRookId: number | null,
+    castlingRookTo: number | null,
+    nextTurn: "WHITE" | "BLACK"
+  ) {
     setPieces((prev) => {
-      const next = [...prev];
+      const next = prev.map((p) => ({ ...p }));
       const piece = next.find((p) => p.id === pieceId);
       if (!piece) return prev;
 
-      const capture = next.find((p) => p.position === to && p.id !== pieceId);
-      if (capture) capture.position = -1;
+      // Normal capture
+      const captured = next.find((p) => p.position === to && p.id !== pieceId);
+      if (captured) captured.position = -1;
 
-      if (piece.position === to) return prev;
+      // En passant capture
+      if (enPassantCapturedId !== null) {
+        const epPiece = next.find((p) => p.id === enPassantCapturedId);
+        if (epPiece) epPiece.position = -1;
+      }
+
       piece.position = to;
+      piece.hasMoved = true;
 
-      const nextTurn = turn === "WHITE" ? "BLACK" : "WHITE";
-      setTurn(nextTurn);
+      // Castling: move the rook alongside the king
+      if (castlingRookId !== null && castlingRookTo !== null) {
+        const rook = next.find((p) => p.id === castlingRookId);
+        if (rook) {
+          rook.position = castlingRookTo;
+          rook.hasMoved = true;
+        }
+      }
 
       return next;
     });
+
+    setTurn(nextTurn);
+    setEnPassantTarget(newEnPassantTarget);
   }
 
-  function isInCheck(side: "WHITE" | "BLACK", board: ChessPiece[]): boolean {
-    const king = board.find((p) => p.type === "king" && p.side === side);
-    if (!king) return false;
-    return board.some(
-      (p) =>
-        p.side !== side &&
-        p.position >= 0 &&
-        checkMovementForPiece(p, king.position, king, board)
-    );
+  // ── Drag handlers ─────────────────────────────────────────────────────────
+  function handleDragStart(id: number) {
+    if (promotionPopup || checkMate || stalemate) return;
+    const piece = pieces.find((p) => p.id === id);
+    if (!piece) return;
+    // Only allow the correct player to drag their own pieces on their turn
+    if (piece.side !== playerSide) return;
+    if (piece.side !== turn) return;
+    draggingIdRef.current = id;
   }
 
   function handleDragEnd(_event: MouseEvent | TouchEvent, info: PanInfo) {
-    if (draggingIdRef.current == null || !boardRef.current || !dataChannelRef) {
-      console.warn("Drag end called but missing required refs");
+    if (draggingIdRef.current == null || !boardRef.current) {
       draggingIdRef.current = null;
       return;
     }
@@ -116,20 +151,26 @@ const ChessBoard = ({ matchId, isHost }: ChessBoardProps) => {
     const rect = boardRef.current.getBoundingClientRect();
     const size = rect.width / BOARD_SIZE;
 
-    const col = Math.floor((info.point.x - rect.left) / size);
-    const row = Math.floor((info.point.y - rect.top) / size);
+    const screenCol = Math.floor((info.point.x - rect.left) / size);
+    const screenRow = Math.floor((info.point.y - rect.top) / size);
 
-    if (!(col >= 0 && col < BOARD_SIZE && row >= 0 && row < BOARD_SIZE)) {
-      console.log("Drag ended outside board bounds");
+    if (
+      screenCol < 0 ||
+      screenCol >= BOARD_SIZE ||
+      screenRow < 0 ||
+      screenRow >= BOARD_SIZE
+    ) {
       draggingIdRef.current = null;
       return;
     }
 
-    const to = row * BOARD_SIZE + col;
-    const piece = pieces.find((piece) => piece.id === draggingIdRef.current);
+    // Map screen coordinates to board position (accounting for board flip)
+    const to = flipBoard
+      ? (BOARD_SIZE - 1 - screenRow) * BOARD_SIZE + (BOARD_SIZE - 1 - screenCol)
+      : screenRow * BOARD_SIZE + screenCol;
 
+    const piece = pieces.find((p) => p.id === draggingIdRef.current);
     if (!piece) {
-      console.warn("Could not find dragged piece");
       draggingIdRef.current = null;
       return;
     }
@@ -139,178 +180,197 @@ const ChessBoard = ({ matchId, isHost }: ChessBoardProps) => {
       return;
     }
 
-    const pieceInToTile = pieces.find((piece) => piece.position === to);
+    const pieceInToTile = pieces.find(
+      (p) => p.position === to && p.position >= 0
+    );
     const isValidMovement = checkMovementForPiece(
       piece,
       to,
       pieceInToTile,
-      pieces
+      pieces,
+      enPassantTarget
     );
-
-    console.log("PIECE: ", piece);
-    console.log("to: ", to);
-    console.log("pieces: ", pieces);
-    console.log("pieceInToTile: ", pieceInToTile);
 
     if (!isValidMovement) {
-      console.log("Invalid movement according to piece rules");
       draggingIdRef.current = null;
       return;
     }
 
-    const side = turn;
-    const stillInCheck = wouldLeaveInCheck(
-      side,
+    // ── Castling extra checks ────────────────────────────────────────────────
+    let castlingRookId: number | null = null;
+    let castlingRookTo: number | null = null;
+
+    if (piece.type === "king" && Math.abs(to - piece.position) === 2) {
+      // Cannot castle while in check
+      if (isInCheck(turn, pieces)) {
+        draggingIdRef.current = null;
+        return;
+      }
+
+      const isKingside = to > piece.position;
+      const rookFromCol = isKingside ? 7 : 0;
+      const rookToCol = isKingside ? 5 : 3;
+      const kingRow = rowOf(piece.position);
+      const rookFromPos = kingRow * 8 + rookFromCol;
+      const rookToPos = kingRow * 8 + rookToCol;
+
+      const rook = pieces.find(
+        (p) =>
+          p.position === rookFromPos &&
+          p.type === "rook" &&
+          p.side === piece.side &&
+          !p.hasMoved
+      );
+      if (!rook) {
+        draggingIdRef.current = null;
+        return;
+      }
+      castlingRookId = rook.id;
+      castlingRookTo = rookToPos;
+
+      // King must not pass through a square that is under attack
+      const passThroughSquare = piece.position + (isKingside ? 1 : -1);
+      if (
+        wouldLeaveInCheck(turn, pieces, piece.id, passThroughSquare, enPassantTarget)
+      ) {
+        draggingIdRef.current = null;
+        return;
+      }
+    }
+
+    // ── Check that this move doesn't leave own king in check ─────────────────
+    if (wouldLeaveInCheck(turn, pieces, piece.id, to, enPassantTarget)) {
+      draggingIdRef.current = null;
+      return;
+    }
+
+    // ── Identify en passant capture ───────────────────────────────────────────
+    let enPassantCapturedId: number | null = null;
+    if (piece.type === "pawn" && to === enPassantTarget) {
+      const dir = turn === "WHITE" ? 1 : -1;
+      const capturedPawnPos = to - dir * 8;
+      const capturedPawn = pieces.find(
+        (p) => p.position === capturedPawnPos && p.side !== turn
+      );
+      if (capturedPawn) enPassantCapturedId = capturedPawn.id;
+    }
+
+    // ── Calculate new en passant target ───────────────────────────────────────
+    let newEnPassantTarget: number | null = null;
+    if (piece.type === "pawn" && Math.abs(to - piece.position) === 16) {
+      const dir = turn === "WHITE" ? 1 : -1;
+      newEnPassantTarget = piece.position + dir * 8;
+    }
+
+    // ── Compute post-move board for checkmate/stalemate detection ─────────────
+    const postBoard = computePostMoveBoard(
       pieces,
-      draggingIdRef.current,
-      to
+      piece.id,
+      to,
+      enPassantTarget,
+      castlingRookId,
+      castlingRookTo
+    );
+    const nextTurn: "WHITE" | "BLACK" = turn === "WHITE" ? "BLACK" : "WHITE";
+    const mateDetected = isInCheckMate(postBoard, turn, newEnPassantTarget);
+    const stalemateDetected =
+      !mateDetected && isInStalemate(postBoard, turn, newEnPassantTarget);
+
+    // ── Apply the move ────────────────────────────────────────────────────────
+    applyMove(
+      piece.id,
+      to,
+      newEnPassantTarget,
+      enPassantCapturedId,
+      castlingRookId,
+      castlingRookTo,
+      nextTurn
     );
 
-    if (stillInCheck) {
-      console.log("Move would leave king in check");
-      draggingIdRef.current = null;
-      return;
-    }
+    if (mateDetected) setCheckMate(true);
+    if (stalemateDetected) setStalemate(true);
 
-    console.log("Executing valid move");
-    movePiece(draggingIdRef.current, to);
-    console.log("BEFORE PROMOTION: ", draggingIdRef.current);
-    if (
-      piece.type == "pawn" &&
-      ((piece.position >= 0 && piece.position < 8) ||
-        (piece.position >= 56 && piece.position < 64))
-    ) {
+    // ── Pawn promotion ────────────────────────────────────────────────────────
+    const isPromotion = piece.type === "pawn" && (to < 8 || to >= 56);
+    if (isPromotion) {
+      setPromotingSide(turn);
       setPromotionPopup(true);
-    }
-
-    if (isInCheckMate()) {
-      setCheckMate(true);
-      console.log("%c CHECKMATE", badColor);
+      // Keep draggingIdRef set — promotePawn will clear it
     } else {
-      console.log("%c YOU'RE GOOD", goodColor);
+      draggingIdRef.current = null;
     }
 
-    if (
-      !(
-        piece.type == "pawn" &&
-        ((piece.position >= 0 && piece.position < 8) ||
-          (piece.position >= 56 && piece.position < 64))
-      )
-    )
-      draggingIdRef.current = null;
-
-    const piecesStateDelta: PiecesStateDeltaType = {
+    // ── Send move to peer ─────────────────────────────────────────────────────
+    const delta: PiecesStateDeltaType = {
       pieceId: piece.id,
       pieceMoved: {
         moveTo: to,
-        turn: turn === "WHITE" ? "BLACK" : "WHITE",
-        check: isInCheck(turn, pieces),
-        checkMate: checkMate,
+        turn: nextTurn,
+        check: isInCheck(nextTurn, postBoard),
+        checkMate: mateDetected,
+        stalemate: stalemateDetected,
+        newEnPassantTarget,
+        enPassantCapturedId,
+        castlingRookId,
+        castlingRookTo,
       },
       piecePromoted: null,
     };
-
-    sendMove(piecesStateDelta, dataChannelRef);
+    sendMove(delta, dataChannelRef);
   }
 
-  // Need to fix issue where one promotion after another doesn't work
+  // ── Promotion ─────────────────────────────────────────────────────────────
   function promotePawn(selectedPiece: DefaultChessPiece) {
     const pawnId = draggingIdRef.current;
-    if (pawnId == null) {
-      return;
-    }
-    setPieces((prevPieces) =>
-      prevPieces.map((piece) =>
-        piece.id === pawnId
-          ? {
-              ...piece,
-              type: selectedPiece.type,
-              image: selectedPiece.image,
-            }
-          : piece
+    if (pawnId == null) return;
+
+    const promotionColor =
+      promotingSide === "WHITE"
+        ? { color: "white" }
+        : { color: "black" };
+
+    setPieces((prev) =>
+      prev.map((p) =>
+        p.id === pawnId
+          ? { ...p, type: selectedPiece.type, image: selectedPiece.image, style: promotionColor }
+          : p
       )
     );
 
     setPromotionPopup(false);
     draggingIdRef.current = null;
 
-    const piecesStateDelta: PiecesStateDeltaType = {
+    const delta: PiecesStateDeltaType = {
       pieceId: pawnId,
       piecePromoted: {
         promotion: selectedPiece.type,
+        promotingSide,
       },
       pieceMoved: null,
     };
-    sendMove(piecesStateDelta, dataChannelRef);
+    sendMove(delta, dataChannelRef);
   }
 
-  function isInCheckMate() {
-    const enemyTurn = turn === "WHITE" ? "BLACK" : "WHITE";
-    if (isInCheck(enemyTurn, pieces)) {
-      console.log("HERE");
-      const piecesOnSingleSide = pieces.filter(
-        (piece) => piece.side === enemyTurn && piece.position !== -1
-      );
-      let isItCheckMate = false;
-      piecesOnSingleSide.some((piece) => {
-        Array.from({ length: 64 }).some((_, i: number) => {
-          const pieceInToTile = pieces.find((piece) => piece.position === i);
-          if (
-            !isItCheckMate &&
-            checkMovementForPiece(piece, i, pieceInToTile, pieces)
-          ) {
-            isItCheckMate = !wouldLeaveInCheck(enemyTurn, pieces, piece.id, i);
-          }
-          return isItCheckMate;
-        });
-      });
-      return !isItCheckMate;
-    } else {
-      return false;
-    }
-  }
+  // ── Board rendering ───────────────────────────────────────────────────────
+  const squares = Array.from({ length: BOARD_SIZE * BOARD_SIZE }, (_, idx) => {
+    // Map display index to board position (flip for BLACK player)
+    const boardPos = flipBoard ? 63 - idx : idx;
 
-  function wouldLeaveInCheck(
-    currentSide: "WHITE" | "BLACK",
-    board: ChessPiece[],
-    movingId: number,
-    to: number
-  ): boolean {
-    const sim = board.map((p) => ({ ...p }));
-    const mover = sim.find((p) => p.id === movingId);
-    if (!mover) return true; // fail safe: block
-    const victim = sim.find((p) => p.position === to && p.id !== movingId);
-    if (victim) victim.position = -1;
-    mover.position = to;
-    return isInCheck(currentSide, sim);
-  }
+    const displayX = idx % BOARD_SIZE;
+    const displayY = Math.floor(idx / BOARD_SIZE);
+    const isLight = (displayX + displayY) % 2 === 0;
 
-  function handleDragStart(id: number) {
-    const piece = pieces.find((p) => p.id === id);
-    if (!piece) return;
-    if (piece.side !== turn) return;
-
-    // console.log(`Starting drag for piece ${id} (${piece.type})`);
-    draggingIdRef.current = id;
-  }
-
-  function dragConstraint(piece: ChessPiece) {
-    const allowed = piece.side === turn;
-    return allowed;
-  }
-
-  useEffect(() => {
-    return () => {
-      draggingIdRef.current = null;
-    };
-  }, []);
-
-  const squares = Array.from({ length: BOARD_SIZE ** 2 }, (_, idx) => {
-    const x = idx % BOARD_SIZE;
-    const y = Math.floor(idx / BOARD_SIZE);
-    const isLight = (x + y) % 2 === 0;
-    const piece = pieces.find((p) => p.position === idx);
+    const piece = pieces.find((p) => p.position === boardPos && p.position >= 0);
     const Icon = piece?.image;
+
+    // Only the current player's pieces on their turn are draggable
+    const isDraggable =
+      !!piece &&
+      piece.side === playerSide &&
+      piece.side === turn &&
+      !checkMate &&
+      !stalemate &&
+      !promotionPopup;
 
     return (
       <div
@@ -319,23 +379,33 @@ const ChessBoard = ({ matchId, isHost }: ChessBoardProps) => {
           isLight
             ? "bg-[var(--color-light-square)]"
             : "bg-[var(--color-dark-square)]"
-        } flex justify-center items-center`}
+        } flex justify-center items-center relative`}
       >
+        {/* Rank/file labels on the edge squares */}
+        {colOf(boardPos) === (flipBoard ? 7 : 0) && (
+          <span className="absolute top-0.5 left-1 text-[0.55rem] font-bold opacity-60 select-none pointer-events-none">
+            {8 - rowOf(boardPos)}
+          </span>
+        )}
+        {rowOf(boardPos) === (flipBoard ? 0 : 7) && (
+          <span className="absolute bottom-0.5 right-1 text-[0.55rem] font-bold opacity-60 select-none pointer-events-none">
+            {String.fromCharCode(97 + colOf(boardPos))}
+          </span>
+        )}
+
         <AnimatePresence>
           {Icon && piece && (
             <motion.div
               layout
               key={piece.id}
-              drag={dragConstraint(piece)}
+              drag={isDraggable}
               dragSnapToOrigin
               dragMomentum={false}
               dragElastic={0.1}
               dragTransition={{ bounceStiffness: 300, bounceDamping: 10 }}
               whileDrag={{ scale: 1.5, zIndex: 1000 }}
               onDragStart={(_, info) => {
-                if (info.point && !checkMate) {
-                  handleDragStart(piece.id);
-                }
+                if (info.point) handleDragStart(piece.id);
               }}
               onDragEnd={(e, info) => {
                 if (draggingIdRef.current === piece.id && info.point) {
@@ -345,18 +415,12 @@ const ChessBoard = ({ matchId, isHost }: ChessBoardProps) => {
               initial={{ scale: 0.5, opacity: 0 }}
               animate={{ scale: 1, opacity: 1, x: 0, y: 0 }}
               exit={{ scale: 0.5, opacity: 0 }}
-              transition={{
-                type: "spring",
-                stiffness: 300,
-                damping: 20,
-              }}
-              className="cursor-grab text-5xl select-none active:cursor-grabbing will-change-transform backface-hidden"
+              transition={{ type: "spring", stiffness: 300, damping: 20 }}
+              className="cursor-grab text-5xl select-none active:cursor-grabbing will-change-transform"
               style={{
                 touchAction: "none",
                 userSelect: "none",
                 WebkitUserSelect: "none",
-                MozUserSelect: "none",
-                msUserSelect: "none",
               }}
             >
               <Icon style={piece.style} />
@@ -367,65 +431,85 @@ const ChessBoard = ({ matchId, isHost }: ChessBoardProps) => {
     );
   });
 
+  // ── Game-over overlay ─────────────────────────────────────────────────────
+  const gameOverMessage = checkMate
+    ? `${turn} is in checkmate — ${turn === "WHITE" ? "BLACK" : "WHITE"} wins!`
+    : stalemate
+    ? "Stalemate — it's a draw!"
+    : null;
+
   return (
-    <div className="h-full min-h-[95vh] flex flex-col items-center">
-      <div
-        ref={boardRef}
-        className="w-[80vw] max-w-[1080px] aspect-square border-2 border-black bg-white grid grid-cols-8 grid-rows-8"
-        style={{
-          touchAction: "none",
-          userSelect: "none",
-        }}
-        onPointerDown={(e) => {
-          e.preventDefault();
-        }}
-      >
-        {checkMate ? (
-          <>
-            <div className="absolute flex items-center justify-center left-[35%] top-[40%] w-[30%] h-[20%] bg-[var(--primary)] ">
-              <div className="text-3xl">{turn} LOST!</div>
-            </div>
-            {squares}
-          </>
+    <div className="h-full min-h-[95vh] flex flex-col items-center gap-4 pt-4">
+      {/* Turn indicator */}
+      <div className="flex items-center gap-2 text-lg font-semibold">
+        <span
+          className={`w-4 h-4 rounded-full border border-gray-400 ${
+            turn === "WHITE" ? "bg-white" : "bg-gray-900"
+          }`}
+        />
+        {checkMate || stalemate ? (
+          <span>{gameOverMessage}</span>
         ) : (
-          <>
-            {promotionPopup && (
-              <div className="absolute flex items-center justify-center left-[35%] top-[40%] w-[30%] h-[20%] bg-[var(--primary)] ">
-                <div className="flex justify-around w-full">
-                  {defaultPieces.map((piece, index) => {
-                    const Icon = piece?.image;
-                    return (
-                      <div key={index} className="flex flex-col items-center">
-                        {piece.type}
-                        <motion.div
-                          onClick={() => promotePawn(piece)}
-                          className="text-3xl mt-3 cursor-pointer"
-                          transition={{ type: "spring" }}
-                          initial={{ scale: 1 }}
-                          whileHover={{ scale: 2 }}
-                        >
-                          <Icon style={piece.style} />
-                        </motion.div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-            {squares}
-          </>
+          <span>
+            {turn === playerSide ? "Your turn" : "Opponent's turn"} ({turn})
+          </span>
         )}
       </div>
-      <div>
-        {/* {log?.map((log, index) => (
-          <div key={index}>{log}</div>
-        ))} */}
-        {/* <button
-          onClick={() => sendMove({ pieceId: 8, moveTo: 16 }, dataChannelRef)}
-          className="btn"
-        >
-          Send Move
-        </button> */}
+
+      {/* Board */}
+      <div
+        ref={boardRef}
+        className="w-[min(80vw,80vh)] aspect-square border-2 border-gray-700 grid grid-cols-8 grid-rows-8 relative"
+        style={{ touchAction: "none", userSelect: "none" }}
+        onPointerDown={(e) => e.preventDefault()}
+      >
+        {squares}
+
+        {/* Checkmate / stalemate overlay */}
+        {(checkMate || stalemate) && (
+          <div className="absolute inset-0 flex items-center justify-center bg-black/50 z-50">
+            <div className="bg-[var(--primary)] rounded-xl px-8 py-6 text-center shadow-2xl">
+              <div className="text-2xl font-bold">{gameOverMessage}</div>
+            </div>
+          </div>
+        )}
+
+        {/* Promotion popup */}
+        {promotionPopup && (
+          <div className="absolute inset-0 flex items-center justify-center bg-black/50 z-50">
+            <div className="bg-[var(--primary)] rounded-xl px-6 py-4 shadow-2xl">
+              <p className="text-center font-semibold mb-3">Choose promotion piece</p>
+              <div className="flex gap-4 justify-around">
+                {defaultPieces.map((piece, index) => {
+                  const Icon = piece.image;
+                  const iconStyle =
+                    promotingSide === "WHITE"
+                      ? { color: "white" }
+                      : { color: "black" };
+                  return (
+                    <div key={index} className="flex flex-col items-center gap-1">
+                      <span className="text-xs capitalize">{piece.type}</span>
+                      <motion.div
+                        onClick={() => promotePawn(piece)}
+                        className="text-4xl cursor-pointer"
+                        initial={{ scale: 1 }}
+                        whileHover={{ scale: 1.4 }}
+                        transition={{ type: "spring" }}
+                      >
+                        <Icon style={iconStyle} />
+                      </motion.div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Player indicator */}
+      <div className="text-sm opacity-60">
+        You are playing as <strong>{playerSide}</strong>
       </div>
     </div>
   );
