@@ -37,7 +37,7 @@ function colOf(pos: number) {
 const ChessBoard = ({ matchId, isHost }: ChessBoardProps) => {
   const boardRef = useRef<HTMLDivElement>(null);
   const playerSide: "WHITE" | "BLACK" = isHost === "true" ? "WHITE" : "BLACK";
-  const flipBoard = playerSide === "BLACK";
+  const flipBoard = playerSide === "WHITE";
 
   const [turn, setTurn] = useState<"WHITE" | "BLACK">("WHITE");
   const [pieces, setPieces] = useState<ChessPiece[]>(chessPieces);
