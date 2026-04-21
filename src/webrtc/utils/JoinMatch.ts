@@ -15,7 +15,10 @@ export const joinMatch = async (
   peerConnectionRef: React.RefObject<RTCPeerConnection | null>,
   dataChannelRef: React.RefObject<RTCDataChannel | null>,
   setPieces: React.Dispatch<React.SetStateAction<ChessPiece[]>>,
-  setTurn: React.Dispatch<React.SetStateAction<"WHITE" | "BLACK">>
+  setTurn: React.Dispatch<React.SetStateAction<"WHITE" | "BLACK">>,
+  setEnPassantTarget: React.Dispatch<React.SetStateAction<number | null>>,
+  setCheckMate: React.Dispatch<React.SetStateAction<boolean>>,
+  setStalemate: React.Dispatch<React.SetStateAction<boolean>>
 ) => {
   console.log(joinMatchId);
 
@@ -24,7 +27,7 @@ export const joinMatch = async (
   }
   const matchDocument = doc(db, "matches", joinMatchId);
   const snapshot = await getDoc(matchDocument);
-  if (!snapshot.exists) return alert("Room not Found");
+  if (!snapshot.exists()) return alert("Room not Found");
 
   const peerConnection = new RTCPeerConnection(rtcConfig);
   peerConnection.oniceconnectionstatechange = () => {
@@ -35,7 +38,7 @@ export const joinMatch = async (
   peerConnection.ondatachannel = (e) => {
     const dc = e.channel;
     dataChannelRef.current = dc;
-    setupDataChannel(dc, setPieces, setTurn);
+    setupDataChannel(dc, setPieces, setTurn, setEnPassantTarget, setCheckMate, setStalemate);
 
     dc.onopen = () => {
       console.log("🟢 DataChannel OPEN (joiner)!");

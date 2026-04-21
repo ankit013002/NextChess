@@ -1,5 +1,3 @@
-import { IconType } from "react-icons";
-
 export type PiecesStateDeltaType = {
   pieceId: number;
   pieceMoved: {
@@ -7,9 +5,15 @@ export type PiecesStateDeltaType = {
     turn: "WHITE" | "BLACK";
     check: boolean;
     checkMate: boolean;
+    stalemate: boolean;
+    newEnPassantTarget: number | null;
+    enPassantCapturedId: number | null;
+    castlingRookId: number | null;
+    castlingRookTo: number | null;
   } | null;
   piecePromoted: {
     promotion: "rook" | "knight" | "bishop" | "queen";
+    promotingSide: "WHITE" | "BLACK";
   } | null;
 };
 

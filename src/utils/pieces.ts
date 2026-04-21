@@ -14,7 +14,8 @@ export interface ChessPiece {
   position: number;
   style: object;
   image: IconType;
-  side: string;
+  side: "WHITE" | "BLACK";
+  hasMoved: boolean;
 }
 
 export interface DefaultChessPiece {
@@ -33,6 +34,7 @@ export const chessPieces: ChessPiece[] = [
     style: { color: "white" },
     image: TbChessRookFilled,
     side: "WHITE",
+    hasMoved: false,
   },
   {
     id: 1,
@@ -41,6 +43,7 @@ export const chessPieces: ChessPiece[] = [
     style: { color: "white" },
     image: TbChessKnightFilled,
     side: "WHITE",
+    hasMoved: false,
   },
   {
     id: 2,
@@ -49,6 +52,7 @@ export const chessPieces: ChessPiece[] = [
     style: { color: "white" },
     image: TbChessBishopFilled,
     side: "WHITE",
+    hasMoved: false,
   },
   {
     id: 3,
@@ -57,6 +61,7 @@ export const chessPieces: ChessPiece[] = [
     style: { color: "white" },
     image: TbChessQueenFilled,
     side: "WHITE",
+    hasMoved: false,
   },
   {
     id: 4,
@@ -65,6 +70,7 @@ export const chessPieces: ChessPiece[] = [
     style: { color: "white" },
     image: TbChessKingFilled,
     side: "WHITE",
+    hasMoved: false,
   },
   {
     id: 5,
@@ -73,6 +79,7 @@ export const chessPieces: ChessPiece[] = [
     style: { color: "white" },
     image: TbChessBishopFilled,
     side: "WHITE",
+    hasMoved: false,
   },
   {
     id: 6,
@@ -81,6 +88,7 @@ export const chessPieces: ChessPiece[] = [
     style: { color: "white" },
     image: TbChessKnightFilled,
     side: "WHITE",
+    hasMoved: false,
   },
   {
     id: 7,
@@ -89,6 +97,7 @@ export const chessPieces: ChessPiece[] = [
     style: { color: "white" },
     image: TbChessRookFilled,
     side: "WHITE",
+    hasMoved: false,
   },
 
   ...Array.from({ length: 8 }, (_, i) => ({
@@ -97,7 +106,8 @@ export const chessPieces: ChessPiece[] = [
     position: 8 + i,
     style: { color: "white" },
     image: TbChessFilled,
-    side: "WHITE",
+    side: "WHITE" as const,
+    hasMoved: false,
   })),
 
   ...Array.from({ length: 8 }, (_, i) => ({
@@ -106,7 +116,8 @@ export const chessPieces: ChessPiece[] = [
     position: 48 + i,
     style: { color: "black" },
     image: TbChessFilled,
-    side: "BLACK",
+    side: "BLACK" as const,
+    hasMoved: false,
   })),
 
   {
@@ -116,6 +127,7 @@ export const chessPieces: ChessPiece[] = [
     style: { color: "black" },
     image: TbChessRookFilled,
     side: "BLACK",
+    hasMoved: false,
   },
   {
     id: 25,
@@ -124,6 +136,7 @@ export const chessPieces: ChessPiece[] = [
     style: { color: "black" },
     image: TbChessKnightFilled,
     side: "BLACK",
+    hasMoved: false,
   },
   {
     id: 26,
@@ -132,6 +145,7 @@ export const chessPieces: ChessPiece[] = [
     style: { color: "black" },
     image: TbChessBishopFilled,
     side: "BLACK",
+    hasMoved: false,
   },
   {
     id: 27,
@@ -140,6 +154,7 @@ export const chessPieces: ChessPiece[] = [
     style: { color: "black" },
     image: TbChessQueenFilled,
     side: "BLACK",
+    hasMoved: false,
   },
   {
     id: 28,
@@ -148,6 +163,7 @@ export const chessPieces: ChessPiece[] = [
     style: { color: "black" },
     image: TbChessKingFilled,
     side: "BLACK",
+    hasMoved: false,
   },
   {
     id: 29,
@@ -156,6 +172,7 @@ export const chessPieces: ChessPiece[] = [
     style: { color: "black" },
     image: TbChessBishopFilled,
     side: "BLACK",
+    hasMoved: false,
   },
   {
     id: 30,
@@ -164,6 +181,7 @@ export const chessPieces: ChessPiece[] = [
     style: { color: "black" },
     image: TbChessKnightFilled,
     side: "BLACK",
+    hasMoved: false,
   },
   {
     id: 31,
@@ -172,6 +190,7 @@ export const chessPieces: ChessPiece[] = [
     style: { color: "black" },
     image: TbChessRookFilled,
     side: "BLACK",
+    hasMoved: false,
   },
 ];
 
