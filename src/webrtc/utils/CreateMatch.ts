@@ -2,6 +2,7 @@ import {
   doc,
   collection,
   setDoc,
+  getDoc,
   onSnapshot,
   addDoc,
 } from "firebase/firestore";
@@ -25,8 +26,19 @@ export const createMatch = async (
   // New UUID each time the host loads — lets the guest detect reconnects.
   const sessionId = crypto.randomUUID();
 
-  // Randomly assign a side so neither player always plays the same color.
-  const playerColor: "WHITE" | "BLACK" = Math.random() < 0.5 ? "WHITE" : "BLACK";
+  const matchDocument = doc(collection(db, "matches"), hostMatchId);
+
+  // Preserve hostColor across reconnects so piece ownership stays consistent.
+  const existingDoc = await getDoc(matchDocument);
+  const existingHostColor = existingDoc.exists()
+    ? existingDoc.data()?.hostColor
+    : undefined;
+  const playerColor: "WHITE" | "BLACK" =
+    existingHostColor === "WHITE" || existingHostColor === "BLACK"
+      ? existingHostColor
+      : Math.random() < 0.5
+      ? "WHITE"
+      : "BLACK";
 
   const peerConnection = new RTCPeerConnection(rtcConfig);
   peerConnectionRef.current = peerConnection;
@@ -58,8 +70,6 @@ export const createMatch = async (
     console.log("⚪️ DataChannel CLOSED");
     onDisconnected();
   };
-
-  const matchDocument = doc(collection(db, "matches"), hostMatchId);
 
   // Each session gets its own ICE candidate subcollection so old candidates
   // never accumulate in a shared collection across reconnects.
