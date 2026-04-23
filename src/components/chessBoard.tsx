@@ -229,6 +229,20 @@ const ChessBoard = ({ matchId, isHost }: ChessBoardProps) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isHost, matchId, connectionVersion]);
 
+  // ── Host auto-restart on disconnect ───────────────────────────────────────
+  // When the guest drops, the host's remoteDescSet closure is already true, so
+  // it can never accept a fresh answer from a returning guest. Incrementing
+  // connectionVersion re-runs createMatch — new peer connection, new sessionId,
+  // remoteDescSet reset to false — and the guest's unsubHostWatch fires the
+  // onHostReconnect callback so they re-join automatically.
+  // The 3 s delay lets transient ICE "disconnected" states recover on their own
+  // before we tear down and restart; the timer is cancelled if ICE recovers.
+  useEffect(() => {
+    if (isHost !== "true" || connectionStatus !== "disconnected") return;
+    const t = setTimeout(() => setConnectionVersion((v) => v + 1), 3000);
+    return () => clearTimeout(t);
+  }, [connectionStatus, isHost]);
+
   // ── Pointer cancel cleanup ─────────────────────────────────────────────────
   useEffect(() => {
     function onCancel() { draggingIdRef.current = null; }
@@ -641,17 +655,41 @@ const ChessBoard = ({ matchId, isHost }: ChessBoardProps) => {
                       </p>
                     </>
                   ) : (
-                    <>
-                      <div className="text-4xl mb-3">⚠️</div>
-                      <h2 className="text-base font-semibold text-gray-900 dark:text-white">
-                        {isHost === "true" ? "Opponent disconnected" : "Connection lost"}
-                      </h2>
-                      <p className="mt-1.5 text-sm text-[var(--muted-foreground)]">
-                        {isHost === "true"
-                          ? "Waiting for them to rejoin…"
-                          : "Reconnecting when the host returns…"}
-                      </p>
-                    </>
+                    // disconnected
+                    isHost === "true" ? (
+                      <>
+                        <div className="text-4xl mb-3">🔌</div>
+                        <h2 className="text-base font-semibold text-gray-900 dark:text-white">
+                          Opponent disconnected
+                        </h2>
+                        <p className="mt-1.5 text-sm text-[var(--muted-foreground)]">
+                          Generating a fresh connection in a moment…
+                        </p>
+                        <button
+                          onClick={() => setConnectionVersion((v) => v + 1)}
+                          className="
+                            mt-4 inline-flex h-9 items-center justify-center rounded-full px-5
+                            bg-[var(--color-dark-square)] text-white text-sm font-medium
+                            shadow hover:brightness-95 transition
+                          "
+                        >
+                          Reconnect now
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <div className="text-4xl mb-3">⏳</div>
+                        <h2 className="text-base font-semibold text-gray-900 dark:text-white">
+                          Host disconnected
+                        </h2>
+                        <p className="mt-1.5 text-sm text-[var(--muted-foreground)]">
+                          You'll reconnect automatically when they return.
+                        </p>
+                        <p className="mt-2 text-xs text-[var(--muted-foreground)]">
+                          Match <strong>#{matchIdStr}</strong>
+                        </p>
+                      </>
+                    )
                   )}
                 </div>
               </div>
