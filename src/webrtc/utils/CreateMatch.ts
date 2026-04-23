@@ -2,6 +2,7 @@ import {
   doc,
   collection,
   setDoc,
+  getDoc,
   onSnapshot,
   addDoc,
 } from "firebase/firestore";
@@ -24,6 +25,20 @@ export const createMatch = async (
 ): Promise<MatchConnection> => {
   // New UUID each time the host loads — lets the guest detect reconnects.
   const sessionId = crypto.randomUUID();
+
+  const matchDocument = doc(collection(db, "matches"), hostMatchId);
+
+  // Preserve hostColor across reconnects so piece ownership stays consistent.
+  const existingDoc = await getDoc(matchDocument);
+  const existingHostColor = existingDoc.exists()
+    ? existingDoc.data()?.hostColor
+    : undefined;
+  const playerColor: "WHITE" | "BLACK" =
+    existingHostColor === "WHITE" || existingHostColor === "BLACK"
+      ? existingHostColor
+      : Math.random() < 0.5
+      ? "WHITE"
+      : "BLACK";
 
   const peerConnection = new RTCPeerConnection(rtcConfig);
   peerConnectionRef.current = peerConnection;
@@ -56,8 +71,6 @@ export const createMatch = async (
     onDisconnected();
   };
 
-  const matchDocument = doc(collection(db, "matches"), hostMatchId);
-
   // Each session gets its own ICE candidate subcollection so old candidates
   // never accumulate in a shared collection across reconnects.
   const sessionRef = doc(collection(matchDocument, "sessions"), sessionId);
@@ -81,9 +94,22 @@ export const createMatch = async (
       offer: { sdp: offerDescription.sdp, type: offerDescription.type },
       sessionId,
       answer: null,
+      hostColor: playerColor,
     },
     { merge: true }
   );
+
+  // Buffer callee ICE candidates that arrive before the remote description is
+  // set — addIceCandidate silently fails if called in the "have-local-offer"
+  // state before setRemoteDescription resolves.
+  const pendingCalleeCandidates: RTCIceCandidateInit[] = [];
+  let remoteDescSet = false;
+
+  const flushCandidates = () => {
+    pendingCalleeCandidates.splice(0).forEach((c) =>
+      peerConnection.addIceCandidate(new RTCIceCandidate(c)).catch(console.warn)
+    );
+  };
 
   const unsubAnswer = onSnapshot(matchDocument, (snapshot) => {
     const data = snapshot.data();
@@ -92,10 +118,12 @@ export const createMatch = async (
     if (
       data.answer &&
       data.sessionId === sessionId &&
-      !peerConnection.currentRemoteDescription
+      !remoteDescSet
     ) {
+      remoteDescSet = true;
       peerConnection
         .setRemoteDescription(new RTCSessionDescription(data.answer))
+        .then(flushCandidates)
         .catch(console.warn);
     }
   });
@@ -104,9 +132,15 @@ export const createMatch = async (
   const unsubCandidates = onSnapshot(calleeCollection, (snapshot) => {
     snapshot.docChanges().forEach((change) => {
       if (change.type === "added") {
-        peerConnection
-          .addIceCandidate(new RTCIceCandidate(change.doc.data()))
-          .catch(console.warn);
+        const candidate = change.doc.data() as RTCIceCandidateInit;
+        if (remoteDescSet) {
+          peerConnection
+            .addIceCandidate(new RTCIceCandidate(candidate))
+            .catch(console.warn);
+        } else {
+          // Queue until setRemoteDescription completes.
+          pendingCalleeCandidates.push(candidate);
+        }
       }
     });
   });
@@ -119,5 +153,5 @@ export const createMatch = async (
     peerConnection.close();
   };
 
-  return { cleanup, savedState };
+  return { cleanup, savedState, playerColor };
 };

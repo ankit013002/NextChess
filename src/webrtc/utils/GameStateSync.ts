@@ -24,6 +24,7 @@ export interface SavedGameState {
 export interface MatchConnection {
   cleanup: () => void;
   savedState: SavedGameState | null;
+  playerColor: "WHITE" | "BLACK";
 }
 
 export function serializePieces(pieces: ChessPiece[]): SerializedPiece[] {
