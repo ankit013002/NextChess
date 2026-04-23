@@ -85,6 +85,18 @@ export const createMatch = async (
     { merge: true }
   );
 
+  // Buffer callee ICE candidates that arrive before the remote description is
+  // set — addIceCandidate silently fails if called in the "have-local-offer"
+  // state before setRemoteDescription resolves.
+  const pendingCalleeCandidates: RTCIceCandidateInit[] = [];
+  let remoteDescSet = false;
+
+  const flushCandidates = () => {
+    pendingCalleeCandidates.splice(0).forEach((c) =>
+      peerConnection.addIceCandidate(new RTCIceCandidate(c)).catch(console.warn)
+    );
+  };
+
   const unsubAnswer = onSnapshot(matchDocument, (snapshot) => {
     const data = snapshot.data();
     if (!data) return;
@@ -92,10 +104,12 @@ export const createMatch = async (
     if (
       data.answer &&
       data.sessionId === sessionId &&
-      !peerConnection.currentRemoteDescription
+      !remoteDescSet
     ) {
+      remoteDescSet = true;
       peerConnection
         .setRemoteDescription(new RTCSessionDescription(data.answer))
+        .then(flushCandidates)
         .catch(console.warn);
     }
   });
@@ -104,9 +118,15 @@ export const createMatch = async (
   const unsubCandidates = onSnapshot(calleeCollection, (snapshot) => {
     snapshot.docChanges().forEach((change) => {
       if (change.type === "added") {
-        peerConnection
-          .addIceCandidate(new RTCIceCandidate(change.doc.data()))
-          .catch(console.warn);
+        const candidate = change.doc.data() as RTCIceCandidateInit;
+        if (remoteDescSet) {
+          peerConnection
+            .addIceCandidate(new RTCIceCandidate(candidate))
+            .catch(console.warn);
+        } else {
+          // Queue until setRemoteDescription completes.
+          pendingCalleeCandidates.push(candidate);
+        }
       }
     });
   });

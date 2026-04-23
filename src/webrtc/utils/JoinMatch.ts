@@ -79,26 +79,45 @@ export const joinMatch = async (
     }
   };
 
+  // Buffer caller ICE candidates that arrive before setRemoteDescription
+  // resolves — addIceCandidate silently fails in the "stable" state before
+  // a remote description is applied.
+  const pendingCallerCandidates: RTCIceCandidateInit[] = [];
+  let remoteDescSet = false;
+
+  const callerCollection = collection(sessionRef, "callerCandidates");
+  const unsubCandidates = onSnapshot(callerCollection, (snapshot) => {
+    snapshot.docChanges().forEach((change) => {
+      if (change.type === "added") {
+        const candidate = change.doc.data() as RTCIceCandidateInit;
+        if (remoteDescSet) {
+          peerConnection
+            .addIceCandidate(new RTCIceCandidate(candidate))
+            .catch(console.warn);
+        } else {
+          // Queue until setRemoteDescription + createAnswer + setLocalDescription
+          // are all done.
+          pendingCallerCandidates.push(candidate);
+        }
+      }
+    });
+  });
+
   await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
   const answerDescription = await peerConnection.createAnswer();
   await peerConnection.setLocalDescription(answerDescription);
+  remoteDescSet = true;
+
+  // Flush any candidates that arrived while we were setting up descriptions.
+  pendingCallerCandidates.splice(0).forEach((c) =>
+    peerConnection.addIceCandidate(new RTCIceCandidate(c)).catch(console.warn)
+  );
 
   await setDoc(
     matchDocument,
     { answer: { sdp: answerDescription.sdp, type: answerDescription.type } },
     { merge: true }
   );
-
-  const callerCollection = collection(sessionRef, "callerCandidates");
-  const unsubCandidates = onSnapshot(callerCollection, (snapshot) => {
-    snapshot.docChanges().forEach((change) => {
-      if (change.type === "added") {
-        peerConnection
-          .addIceCandidate(new RTCIceCandidate(change.doc.data()))
-          .catch(console.warn);
-      }
-    });
-  });
 
   // Watch the match document for a new sessionId — that means the host has
   // refreshed and generated a fresh offer. Signal the component to re-join.
