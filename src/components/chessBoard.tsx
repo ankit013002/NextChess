@@ -121,7 +121,8 @@ function CopyButton({ text }: { text: string }) {
 /* ── Main board component ───────────────────────────────────────────────── */
 const ChessBoard = ({ matchId, isHost }: ChessBoardProps) => {
   const boardRef = useRef<HTMLDivElement>(null);
-  const playerSide: "WHITE" | "BLACK" = isHost === "true" ? "WHITE" : "BLACK";
+  // Assigned after the connection resolves: host picks randomly, guest gets the opposite.
+  const [playerSide, setPlayerSide] = useState<"WHITE" | "BLACK" | null>(null);
   const flipBoard = playerSide === "WHITE";
 
   const [turn, setTurn] = useState<"WHITE" | "BLACK">("WHITE");
@@ -176,7 +177,7 @@ const ChessBoard = ({ matchId, isHost }: ChessBoardProps) => {
     const init = async () => {
       try {
         if (isHost === "true") {
-          const { cleanup, savedState } = await createMatch(
+          const { cleanup, savedState, playerColor } = await createMatch(
             peerConnectionRef,
             dataChannelRef,
             matchId.toString(),
@@ -190,10 +191,11 @@ const ChessBoard = ({ matchId, isHost }: ChessBoardProps) => {
           );
           if (!isActive) { cleanup(); return; }
           cleanupRef.current = cleanup;
+          setPlayerSide(playerColor);
           if (savedState) restoreGameState(savedState);
         } else {
           const onHostReconnect = () => setConnectionVersion((v) => v + 1);
-          const { cleanup, savedState } = await joinMatch(
+          const { cleanup, savedState, playerColor } = await joinMatch(
             matchId.toString(),
             peerConnectionRef,
             dataChannelRef,
@@ -208,6 +210,7 @@ const ChessBoard = ({ matchId, isHost }: ChessBoardProps) => {
           );
           if (!isActive) { cleanup(); return; }
           cleanupRef.current = cleanup;
+          setPlayerSide(playerColor);
           if (savedState) restoreGameState(savedState);
         }
       } catch (err) {
@@ -276,6 +279,7 @@ const ChessBoard = ({ matchId, isHost }: ChessBoardProps) => {
 
   // ── Drag handlers ──────────────────────────────────────────────────────────
   function handleDragStart(id: number) {
+    if (connectionStatus !== "connected" || !playerSide) return;
     if (promotionPopup || checkMate || stalemate) return;
     const piece = pieces.find((p) => p.id === id);
     if (!piece) return;
@@ -468,7 +472,8 @@ const ChessBoard = ({ matchId, isHost }: ChessBoardProps) => {
     const Icon = piece?.image;
 
     const isDraggable =
-      !!piece && piece.side === playerSide && piece.side === turn &&
+      !!piece && playerSide !== null && connectionStatus === "connected" &&
+      piece.side === playerSide && piece.side === turn &&
       !checkMate && !stalemate && !promotionPopup;
 
     return (
@@ -527,7 +532,7 @@ const ChessBoard = ({ matchId, isHost }: ChessBoardProps) => {
     ? "Stalemate — it's a draw!"
     : null;
 
-  const isMyTurn = turn === playerSide;
+  const isMyTurn = playerSide !== null && turn === playerSide;
   const statusDot =
     connectionStatus === "connected"
       ? "bg-green-400"
@@ -585,8 +590,8 @@ const ChessBoard = ({ matchId, isHost }: ChessBoardProps) => {
       {/* ── Board area ──────────────────────────────────────────────────── */}
       <div className="flex flex-1 flex-col items-center justify-center py-6 gap-4 px-4">
 
-        {/* Turn / status bar */}
-        {!checkMate && !stalemate && (
+        {/* Turn / status bar — only shown once connected */}
+        {connectionStatus === "connected" && !checkMate && !stalemate && (
           <div className={`
             flex items-center gap-2.5 rounded-full px-5 py-2 text-sm font-medium shadow-sm
             border transition-all
@@ -618,6 +623,39 @@ const ChessBoard = ({ matchId, isHost }: ChessBoardProps) => {
             onPointerDown={(e) => e.preventDefault()}
           >
             {squares}
+
+            {/* Waiting / connecting overlay — blocks interaction until peer is connected */}
+            {connectionStatus !== "connected" && !checkMate && !stalemate && (
+              <div className="absolute inset-0 flex items-center justify-center bg-black/55 z-50 backdrop-blur-[2px]">
+                <div className="mx-4 rounded-2xl bg-white dark:bg-[var(--card)] px-8 py-7 text-center shadow-2xl max-w-xs w-full">
+                  {connectionStatus === "connecting" ? (
+                    <>
+                      <div className="flex justify-center mb-4">
+                        <div className="w-10 h-10 rounded-full border-4 border-[var(--border)] border-t-[var(--color-dark-square)] animate-spin" />
+                      </div>
+                      <h2 className="text-base font-semibold text-gray-900 dark:text-white">
+                        Waiting for opponent…
+                      </h2>
+                      <p className="mt-1.5 text-sm text-[var(--muted-foreground)]">
+                        Share match&nbsp;<strong>#{matchIdStr}</strong> with your friend to start
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <div className="text-4xl mb-3">⚠️</div>
+                      <h2 className="text-base font-semibold text-gray-900 dark:text-white">
+                        {isHost === "true" ? "Opponent disconnected" : "Connection lost"}
+                      </h2>
+                      <p className="mt-1.5 text-sm text-[var(--muted-foreground)]">
+                        {isHost === "true"
+                          ? "Waiting for them to rejoin…"
+                          : "Reconnecting when the host returns…"}
+                      </p>
+                    </>
+                  )}
+                </div>
+              </div>
+            )}
 
             {/* Game-over overlay */}
             {(checkMate || stalemate) && (
@@ -682,15 +720,17 @@ const ChessBoard = ({ matchId, isHost }: ChessBoardProps) => {
           </div>
         </div>
 
-        {/* Player side label */}
-        <div className="flex items-center gap-2 text-sm text-[var(--muted-foreground)]">
-          <span className={`inline-block w-3 h-3 rounded-full border ${
-            playerSide === "WHITE"
-              ? "bg-white border-gray-300 dark:border-gray-500"
-              : "bg-gray-900 border-gray-600 dark:bg-gray-200 dark:border-gray-400"
-          }`} />
-          Playing as <strong className="text-[var(--foreground)]">{playerSide}</strong>
-        </div>
+        {/* Player side label — only shown once color is assigned */}
+        {playerSide && (
+          <div className="flex items-center gap-2 text-sm text-[var(--muted-foreground)]">
+            <span className={`inline-block w-3 h-3 rounded-full border ${
+              playerSide === "WHITE"
+                ? "bg-white border-gray-300 dark:border-gray-500"
+                : "bg-gray-900 border-gray-600 dark:bg-gray-200 dark:border-gray-400"
+            }`} />
+            Playing as <strong className="text-[var(--foreground)]">{playerSide}</strong>
+          </div>
+        )}
       </div>
     </div>
   );

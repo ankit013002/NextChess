@@ -26,17 +26,20 @@ export const joinMatch = async (
 ): Promise<MatchConnection> => {
   if (!joinMatchId.trim()) {
     alert("Please enter a match ID before joining.");
-    return { cleanup: () => {}, savedState: null };
+    return { cleanup: () => {}, savedState: null, playerColor: "WHITE" };
   }
 
   const matchDocument = doc(db, "matches", joinMatchId);
   const snapshot = await getDoc(matchDocument);
   if (!snapshot.exists()) {
     alert("Room not found");
-    return { cleanup: () => {}, savedState: null };
+    return { cleanup: () => {}, savedState: null, playerColor: "WHITE" };
   }
 
-  const { offer, sessionId: currentSessionId } = snapshot.data()!;
+  const { offer, sessionId: currentSessionId, hostColor } = snapshot.data()!;
+  // Guest always gets the opposite of whatever color the host was assigned.
+  const playerColor: "WHITE" | "BLACK" =
+    hostColor === "WHITE" ? "BLACK" : "WHITE";
   // Per-session subcollection keeps ICE candidates isolated across reconnects.
   const sessionRef = doc(collection(matchDocument, "sessions"), currentSessionId);
 
@@ -137,5 +140,5 @@ export const joinMatch = async (
     peerConnection.close();
   };
 
-  return { cleanup, savedState };
+  return { cleanup, savedState, playerColor };
 };

@@ -25,6 +25,9 @@ export const createMatch = async (
   // New UUID each time the host loads — lets the guest detect reconnects.
   const sessionId = crypto.randomUUID();
 
+  // Randomly assign a side so neither player always plays the same color.
+  const playerColor: "WHITE" | "BLACK" = Math.random() < 0.5 ? "WHITE" : "BLACK";
+
   const peerConnection = new RTCPeerConnection(rtcConfig);
   peerConnectionRef.current = peerConnection;
 
@@ -81,6 +84,7 @@ export const createMatch = async (
       offer: { sdp: offerDescription.sdp, type: offerDescription.type },
       sessionId,
       answer: null,
+      hostColor: playerColor,
     },
     { merge: true }
   );
@@ -139,5 +143,5 @@ export const createMatch = async (
     peerConnection.close();
   };
 
-  return { cleanup, savedState };
+  return { cleanup, savedState, playerColor };
 };
