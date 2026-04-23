@@ -9,6 +9,7 @@ import {
 import { db, rtcConfig } from "../ChessClient";
 import { setupDataChannel } from "./SetUpDataChannel";
 import { ChessPiece } from "@/utils/pieces";
+import { loadGameState, MatchConnection } from "./GameStateSync";
 
 export const joinMatch = async (
   joinMatchId: string,
@@ -18,68 +19,104 @@ export const joinMatch = async (
   setTurn: React.Dispatch<React.SetStateAction<"WHITE" | "BLACK">>,
   setEnPassantTarget: React.Dispatch<React.SetStateAction<number | null>>,
   setCheckMate: React.Dispatch<React.SetStateAction<boolean>>,
-  setStalemate: React.Dispatch<React.SetStateAction<boolean>>
-) => {
-  console.log(joinMatchId);
-
+  setStalemate: React.Dispatch<React.SetStateAction<boolean>>,
+  onConnected: () => void,
+  onDisconnected: () => void,
+  onHostReconnect: () => void
+): Promise<MatchConnection> => {
   if (!joinMatchId.trim()) {
-    return alert("Please enter a match ID before joining.");
+    alert("Please enter a match ID before joining.");
+    return { cleanup: () => {}, savedState: null };
   }
+
   const matchDocument = doc(db, "matches", joinMatchId);
   const snapshot = await getDoc(matchDocument);
-  if (!snapshot.exists()) return alert("Room not Found");
+  if (!snapshot.exists()) {
+    alert("Room not found");
+    return { cleanup: () => {}, savedState: null };
+  }
+
+  const { offer, sessionId: currentSessionId } = snapshot.data()!;
+  // Per-session subcollection keeps ICE candidates isolated across reconnects.
+  const sessionRef = doc(collection(matchDocument, "sessions"), currentSessionId);
 
   const peerConnection = new RTCPeerConnection(rtcConfig);
-  peerConnection.oniceconnectionstatechange = () => {
-    console.log("ICE state →", peerConnection.iceConnectionState);
-  };
   peerConnectionRef.current = peerConnection;
+
+  peerConnection.oniceconnectionstatechange = () => {
+    const state = peerConnection.iceConnectionState;
+    console.log("ICE state →", state);
+    if (state === "connected" || state === "completed") onConnected();
+    if (state === "disconnected" || state === "failed" || state === "closed")
+      onDisconnected();
+  };
 
   peerConnection.ondatachannel = (e) => {
     const dc = e.channel;
     dataChannelRef.current = dc;
-    setupDataChannel(dc, setPieces, setTurn, setEnPassantTarget, setCheckMate, setStalemate);
-
+    setupDataChannel(
+      dc,
+      setPieces,
+      setTurn,
+      setEnPassantTarget,
+      setCheckMate,
+      setStalemate
+    );
     dc.onopen = () => {
-      console.log("🟢 DataChannel OPEN (joiner)!");
+      console.log("🟢 DataChannel OPEN (guest)");
+      onConnected();
     };
     dc.onclose = () => {
       console.log("⚪️ DataChannel CLOSED");
+      onDisconnected();
     };
   };
 
-  const calleeCollection = collection(matchDocument, "calleeCandidates");
+  const calleeCollection = collection(sessionRef, "calleeCandidates");
   peerConnection.onicecandidate = (e) => {
     if (e.candidate) {
       addDoc(calleeCollection, e.candidate.toJSON());
     }
   };
 
-  const { offer } = snapshot.data()!;
-
   await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
-
   const answerDescription = await peerConnection.createAnswer();
   await peerConnection.setLocalDescription(answerDescription);
 
-  const answer = {
-    sdp: answerDescription.sdp,
-    type: answerDescription.type,
-  };
+  await setDoc(
+    matchDocument,
+    { answer: { sdp: answerDescription.sdp, type: answerDescription.type } },
+    { merge: true }
+  );
 
-  await setDoc(matchDocument, { answer }, { merge: true });
-
-  const callerCollection = collection(matchDocument, "callerCandidates");
-  onSnapshot(callerCollection, (snapshot) => {
-    console.log(
-      "📥 callerCandidates snapshot:",
-      snapshot.docs.map((d) => d.id)
-    );
+  const callerCollection = collection(sessionRef, "callerCandidates");
+  const unsubCandidates = onSnapshot(callerCollection, (snapshot) => {
     snapshot.docChanges().forEach((change) => {
-      console.log("   🔸 change:", change.type, change.doc.data());
       if (change.type === "added") {
-        peerConnection.addIceCandidate(new RTCIceCandidate(change.doc.data()));
+        peerConnection
+          .addIceCandidate(new RTCIceCandidate(change.doc.data()))
+          .catch(console.warn);
       }
     });
   });
+
+  // Watch the match document for a new sessionId — that means the host has
+  // refreshed and generated a fresh offer. Signal the component to re-join.
+  const unsubHostWatch = onSnapshot(matchDocument, (snapshot) => {
+    const data = snapshot.data();
+    if (!data) return;
+    if (data.sessionId && data.sessionId !== currentSessionId) {
+      onHostReconnect();
+    }
+  });
+
+  const savedState = await loadGameState(joinMatchId);
+
+  const cleanup = () => {
+    unsubCandidates();
+    unsubHostWatch();
+    peerConnection.close();
+  };
+
+  return { cleanup, savedState };
 };

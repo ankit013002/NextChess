@@ -19,6 +19,11 @@ import {
 import { createMatch } from "@/webrtc/utils/CreateMatch";
 import { joinMatch } from "@/webrtc/utils/JoinMatch";
 import { PiecesStateDeltaType, sendMove } from "@/webrtc/utils/SendMove";
+import {
+  deserializePieces,
+  SavedGameState,
+  saveGameState,
+} from "@/webrtc/utils/GameStateSync";
 
 interface ChessBoardProps {
   matchId: number;
@@ -46,10 +51,17 @@ const ChessBoard = ({ matchId, isHost }: ChessBoardProps) => {
   const [stalemate, setStalemate] = useState(false);
   const [promotionPopup, setPromotionPopup] = useState(false);
   const [promotingSide, setPromotingSide] = useState<"WHITE" | "BLACK">("WHITE");
+  const [connectionStatus, setConnectionStatus] = useState<
+    "connecting" | "connected" | "disconnected"
+  >("connecting");
+  // Incrementing this triggers the guest's useEffect to re-run joinMatch when
+  // the host reconnects (new sessionId detected in Firestore).
+  const [connectionVersion, setConnectionVersion] = useState(0);
 
-  const peerConnectionRef = useRef<RTCPeerConnection>(null);
-  const dataChannelRef = useRef<RTCDataChannel>(null);
+  const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
+  const dataChannelRef = useRef<RTCDataChannel | null>(null);
   const draggingIdRef = useRef<number | null>(null);
+  const cleanupRef = useRef<(() => void) | null>(null);
   const pendingPromotionRef = useRef<{
     pieceId: number;
     to: number;
@@ -58,32 +70,91 @@ const ChessBoard = ({ matchId, isHost }: ChessBoardProps) => {
     castlingRookTo: number | null;
   } | null>(null);
 
-  // ── WebRTC setup ──────────────────────────────────────────────────────────
+  // ── WebRTC setup (also handles reconnects) ────────────────────────────────
   useEffect(() => {
-    if (isHost === "true") {
-      createMatch(
-        peerConnectionRef,
-        dataChannelRef,
-        matchId.toString(),
-        setPieces,
-        setTurn,
-        setEnPassantTarget,
-        setCheckMate,
-        setStalemate
-      );
-    } else {
-      joinMatch(
-        matchId.toString(),
-        peerConnectionRef,
-        dataChannelRef,
-        setPieces,
-        setTurn,
-        setEnPassantTarget,
-        setCheckMate,
-        setStalemate
-      );
+    // Tear down any previous connection before establishing a new one.
+    cleanupRef.current?.();
+    cleanupRef.current = null;
+    setConnectionStatus("connecting");
+
+    // Guard against stale async completions: if this effect re-runs (e.g.
+    // connectionVersion changed) before the previous await resolves, we set
+    // isActive = false in cleanup so the old promise discards its result.
+    let isActive = true;
+
+    const onConnected = () => {
+      if (isActive) setConnectionStatus("connected");
+    };
+    const onDisconnected = () => {
+      if (isActive) setConnectionStatus("disconnected");
+    };
+
+    function restoreGameState(saved: SavedGameState) {
+      pendingPromotionRef.current = null;
+      setPromotionPopup(false);
+      setPieces(deserializePieces(saved.pieces));
+      setTurn(saved.turn);
+      setEnPassantTarget(saved.enPassantTarget);
+      setCheckMate(saved.checkMate);
+      setStalemate(saved.stalemate);
     }
-  }, [isHost, matchId]);
+
+    const init = async () => {
+      try {
+        if (isHost === "true") {
+          const { cleanup, savedState } = await createMatch(
+            peerConnectionRef,
+            dataChannelRef,
+            matchId.toString(),
+            setPieces,
+            setTurn,
+            setEnPassantTarget,
+            setCheckMate,
+            setStalemate,
+            onConnected,
+            onDisconnected
+          );
+          if (!isActive) { cleanup(); return; }
+          cleanupRef.current = cleanup;
+          if (savedState) restoreGameState(savedState);
+        } else {
+          // When the host refreshes and writes a new offer, onHostReconnect fires,
+          // incrementing connectionVersion, which re-runs this effect so the guest
+          // reads the fresh offer and re-establishes the WebRTC connection.
+          const onHostReconnect = () => setConnectionVersion((v) => v + 1);
+          const { cleanup, savedState } = await joinMatch(
+            matchId.toString(),
+            peerConnectionRef,
+            dataChannelRef,
+            setPieces,
+            setTurn,
+            setEnPassantTarget,
+            setCheckMate,
+            setStalemate,
+            onConnected,
+            onDisconnected,
+            onHostReconnect
+          );
+          if (!isActive) { cleanup(); return; }
+          cleanupRef.current = cleanup;
+          if (savedState) restoreGameState(savedState);
+        }
+      } catch (err) {
+        console.error("Failed to connect:", err);
+        if (isActive) setConnectionStatus("disconnected");
+      }
+    };
+
+    init();
+
+    return () => {
+      isActive = false;
+      cleanupRef.current?.();
+      cleanupRef.current = null;
+    };
+    // connectionVersion is intentionally included: it drives guest re-joins.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isHost, matchId, connectionVersion]);
 
   // ── Pointer cancel cleanup ─────────────────────────────────────────────────
   useEffect(() => {
@@ -340,6 +411,16 @@ const ChessBoard = ({ matchId, isHost }: ChessBoardProps) => {
     if (stalemateDetected) setStalemate(true);
     draggingIdRef.current = null;
 
+    // Persist to Firestore so either player can rejoin and restore state.
+    saveGameState(
+      String(matchId),
+      postBoard,
+      nextTurn,
+      newEnPassantTarget,
+      mateDetected,
+      stalemateDetected
+    ).catch(console.warn);
+
     // ── Send move to peer ─────────────────────────────────────────────────────
     const delta: PiecesStateDeltaType = {
       pieceId: piece.id,
@@ -395,6 +476,16 @@ const ChessBoard = ({ matchId, isHost }: ChessBoardProps) => {
 
     setPromotionPopup(false);
     pendingPromotionRef.current = null;
+
+    // Persist the completed promotion to Firestore.
+    saveGameState(
+      String(matchId),
+      postPromotionBoard,
+      nextTurn,
+      null,
+      mateDetected,
+      stalemateDetected
+    ).catch(console.warn);
 
     // Send a single atomic delta with both pieceMoved and piecePromoted so the
     // peer applies the full promotion in one step.
@@ -508,6 +599,28 @@ const ChessBoard = ({ matchId, isHost }: ChessBoardProps) => {
 
   return (
     <div className="h-full min-h-[95vh] flex flex-col items-center gap-4 pt-4">
+      {/* Connection status */}
+      <div className="flex items-center gap-2 text-sm">
+        <span
+          className={`w-2.5 h-2.5 rounded-full ${
+            connectionStatus === "connected"
+              ? "bg-green-500"
+              : connectionStatus === "disconnected"
+              ? "bg-red-500 animate-pulse"
+              : "bg-yellow-400 animate-pulse"
+          }`}
+        />
+        <span className="opacity-70">
+          {connectionStatus === "connected"
+            ? "Connected"
+            : connectionStatus === "disconnected"
+            ? isHost === "true"
+              ? "Opponent disconnected — waiting for them to rejoin"
+              : "Host disconnected — reconnecting when they return…"
+            : "Connecting…"}
+        </span>
+      </div>
+
       {/* Turn indicator */}
       <div className="flex items-center gap-2 text-lg font-semibold">
         <span
