@@ -26,35 +26,39 @@ const HostJoinControl = () => {
   return (
     <div className="w-full max-w-md">
       <div className="flex gap-3">
+        {/* Host */}
         <button
           onClick={hostNewGame}
           aria-label="Host a new match"
           className="
-            inline-flex h-11 items-center justify-center rounded-full px-6
-            text-white shadow-md transition
-            bg-[var(--color-dark-square)]
-            hover:brightness-95 active:translate-y-[1px]
-            ring-1 ring-black/10 focus:outline-none focus:ring-2 focus:ring-[var(--ring)]
+            inline-flex h-12 items-center justify-center gap-2 rounded-full px-7
+            bg-[var(--color-dark-square)] text-white font-semibold shadow-md
+            hover:brightness-95 active:translate-y-px transition
+            ring-1 ring-black/10
+            focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-dark-square)]
           "
         >
+          <span className="text-base leading-none">♜</span>
           Host
         </button>
 
+        {/* Join toggle */}
         <button
           onClick={() => setJoinOpen((v) => !v)}
           aria-expanded={joinOpen}
           aria-controls="join-panel"
           aria-label="Join an existing match"
           className="
-            inline-flex h-11 items-center justify-center rounded-full px-6
-            text-[var(--foreground)] shadow-md transition
+            inline-flex h-12 items-center justify-center gap-2 rounded-full px-7
+            text-[var(--foreground)] font-semibold shadow-md transition
             border border-[var(--border)]
-            bg-[color:rgb(255_255_255/0.7)] hover:bg-[color:rgb(255_255_255/0.85)]
-            dark:bg-[color:rgb(0_0_0/0.35)] dark:hover:bg-[color:rgb(0_0_0/0.45)]
+            bg-[color:rgb(255_255_255/0.7)] hover:bg-[color:rgb(255_255_255/0.9)]
+            dark:bg-[color:rgb(0_0_0/0.25)] dark:hover:bg-[color:rgb(0_0_0/0.4)]
             backdrop-blur
-            focus:outline-none focus:ring-2 focus:ring-[var(--ring)]
+            focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]
           "
         >
+          <span className="text-base leading-none">♟</span>
           Join
         </button>
       </div>
@@ -64,20 +68,18 @@ const HostJoinControl = () => {
           <motion.div
             id="join-panel"
             key="join-panel"
-            initial={{ opacity: 0, height: 0, y: -6 }}
+            initial={{ opacity: 0, height: 0, y: -8 }}
             animate={{ opacity: 1, height: "auto", y: 0 }}
-            exit={{ opacity: 0, height: 0, y: -6 }}
-            transition={{ duration: 0.22 }}
+            exit={{ opacity: 0, height: 0, y: -8 }}
+            transition={{ duration: 0.2, ease: "easeOut" }}
             className="
-              mt-3 rounded-xl border border-[var(--border)]
-              bg-[color:rgb(255_255_255/0.6)] dark:bg-[color:rgb(0_0_0/0.35)]
-              backdrop-blur p-2 sm:p-3 shadow
+              mt-3 rounded-2xl border border-[var(--border)]
+              bg-[color:rgb(255_255_255/0.7)] dark:bg-[color:rgb(0_0_0/0.3)]
+              backdrop-blur p-3 shadow-md
             "
           >
             <div className="flex items-center gap-2">
-              <label htmlFor="matchId" className="sr-only">
-                Match ID
-              </label>
+              <label htmlFor="matchId" className="sr-only">Match ID</label>
               <input
                 id="matchId"
                 value={joinMatchId}
@@ -93,39 +95,38 @@ const HostJoinControl = () => {
                 placeholder="Enter match ID"
                 aria-invalid={!!joinMatchId && !isValid}
                 className={`
-                  h-11 w-full flex-1 rounded-xl px-3
+                  h-11 w-full flex-1 rounded-xl px-3 font-mono tracking-wider
                   border bg-[var(--card)] text-[var(--card-foreground)]
-                  placeholder:text-[var(--muted-foreground)]
+                  placeholder:text-[var(--muted-foreground)] placeholder:font-sans placeholder:tracking-normal
                   border-[var(--border)]
-                  focus:outline-none focus:ring-2 focus:ring-[var(--ring)] focus:border-transparent
-                  ${
-                    joinMatchId && !isValid
-                      ? "ring-2 ring-[var(--error)] border-[var(--error)]"
-                      : ""
-                  }
+                  focus:outline-none focus:ring-2 focus:ring-[var(--color-dark-square)] focus:border-transparent
+                  transition
+                  ${joinMatchId && !isValid ? "ring-2 ring-red-400 border-red-400" : ""}
                 `}
               />
               <button
                 onClick={joinGame}
                 disabled={!isValid}
                 className="
-                  inline-flex h-11 items-center justify-center rounded-full px-5
-                  text-white shadow-md transition
-                  bg-[var(--color-dark-square)]
-                  hover:brightness-95 active:translate-y-[1px]
+                  inline-flex h-11 shrink-0 items-center justify-center rounded-full px-5
+                  bg-[var(--color-dark-square)] text-white font-medium shadow-md transition
+                  hover:brightness-95 active:translate-y-px
                   ring-1 ring-black/10
-                  focus:outline-none focus:ring-2 focus:ring-[var(--ring)]
-                  disabled:opacity-50 disabled:cursor-not-allowed
+                  focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-dark-square)]
+                  disabled:opacity-40 disabled:cursor-not-allowed disabled:translate-y-0
                 "
               >
                 Join
               </button>
             </div>
 
-            <div className="mt-1 text-xs text-[var(--muted-foreground)]">
-              Tip: digits only • Press <kbd className="kbd kbd-xs">Enter</kbd>{" "}
-              to join, <kbd className="kbd kbd-xs">Esc</kbd> to close.
-            </div>
+            <p className="mt-2 text-xs text-[var(--muted-foreground)]">
+              Digits only ·{" "}
+              <kbd className="rounded border border-[var(--border)] bg-[var(--secondary)] px-1 py-px text-[10px]">Enter</kbd>{" "}
+              to join ·{" "}
+              <kbd className="rounded border border-[var(--border)] bg-[var(--secondary)] px-1 py-px text-[10px]">Esc</kbd>{" "}
+              to close
+            </p>
           </motion.div>
         )}
       </AnimatePresence>
