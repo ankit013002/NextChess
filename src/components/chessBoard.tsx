@@ -58,8 +58,8 @@ const ChessBoard = ({ matchId, isHost }: ChessBoardProps) => {
   // the host reconnects (new sessionId detected in Firestore).
   const [connectionVersion, setConnectionVersion] = useState(0);
 
-  const peerConnectionRef = useRef<RTCPeerConnection>(null);
-  const dataChannelRef = useRef<RTCDataChannel>(null);
+  const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
+  const dataChannelRef = useRef<RTCDataChannel | null>(null);
   const draggingIdRef = useRef<number | null>(null);
   const cleanupRef = useRef<(() => void) | null>(null);
   const pendingPromotionRef = useRef<{
@@ -77,8 +77,17 @@ const ChessBoard = ({ matchId, isHost }: ChessBoardProps) => {
     cleanupRef.current = null;
     setConnectionStatus("connecting");
 
-    const onConnected = () => setConnectionStatus("connected");
-    const onDisconnected = () => setConnectionStatus("disconnected");
+    // Guard against stale async completions: if this effect re-runs (e.g.
+    // connectionVersion changed) before the previous await resolves, we set
+    // isActive = false in cleanup so the old promise discards its result.
+    let isActive = true;
+
+    const onConnected = () => {
+      if (isActive) setConnectionStatus("connected");
+    };
+    const onDisconnected = () => {
+      if (isActive) setConnectionStatus("disconnected");
+    };
 
     function restoreGameState(saved: SavedGameState) {
       pendingPromotionRef.current = null;
@@ -91,48 +100,55 @@ const ChessBoard = ({ matchId, isHost }: ChessBoardProps) => {
     }
 
     const init = async () => {
-      if (isHost === "true") {
-        const { cleanup, savedState } = await createMatch(
-          peerConnectionRef,
-          dataChannelRef,
-          matchId.toString(),
-          setPieces,
-          setTurn,
-          setEnPassantTarget,
-          setCheckMate,
-          setStalemate,
-          onConnected,
-          onDisconnected
-        );
-        cleanupRef.current = cleanup;
-        if (savedState) restoreGameState(savedState);
-      } else {
-        // When the host refreshes and writes a new offer, onHostReconnect fires,
-        // incrementing connectionVersion, which re-runs this effect so the guest
-        // reads the fresh offer and re-establishes the WebRTC connection.
-        const onHostReconnect = () =>
-          setConnectionVersion((v) => v + 1);
-        const { cleanup, savedState } = await joinMatch(
-          matchId.toString(),
-          peerConnectionRef,
-          dataChannelRef,
-          setPieces,
-          setTurn,
-          setEnPassantTarget,
-          setCheckMate,
-          setStalemate,
-          onConnected,
-          onDisconnected,
-          onHostReconnect
-        );
-        cleanupRef.current = cleanup;
-        if (savedState) restoreGameState(savedState);
+      try {
+        if (isHost === "true") {
+          const { cleanup, savedState } = await createMatch(
+            peerConnectionRef,
+            dataChannelRef,
+            matchId.toString(),
+            setPieces,
+            setTurn,
+            setEnPassantTarget,
+            setCheckMate,
+            setStalemate,
+            onConnected,
+            onDisconnected
+          );
+          if (!isActive) { cleanup(); return; }
+          cleanupRef.current = cleanup;
+          if (savedState) restoreGameState(savedState);
+        } else {
+          // When the host refreshes and writes a new offer, onHostReconnect fires,
+          // incrementing connectionVersion, which re-runs this effect so the guest
+          // reads the fresh offer and re-establishes the WebRTC connection.
+          const onHostReconnect = () => setConnectionVersion((v) => v + 1);
+          const { cleanup, savedState } = await joinMatch(
+            matchId.toString(),
+            peerConnectionRef,
+            dataChannelRef,
+            setPieces,
+            setTurn,
+            setEnPassantTarget,
+            setCheckMate,
+            setStalemate,
+            onConnected,
+            onDisconnected,
+            onHostReconnect
+          );
+          if (!isActive) { cleanup(); return; }
+          cleanupRef.current = cleanup;
+          if (savedState) restoreGameState(savedState);
+        }
+      } catch (err) {
+        console.error("Failed to connect:", err);
+        if (isActive) setConnectionStatus("disconnected");
       }
     };
 
     init();
 
     return () => {
+      isActive = false;
       cleanupRef.current?.();
       cleanupRef.current = null;
     };

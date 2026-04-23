@@ -1,4 +1,4 @@
-import { doc, getDoc, updateDoc } from "firebase/firestore";
+import { doc, getDoc, setDoc } from "firebase/firestore";
 import { db } from "@/webrtc/ChessClient";
 import { ChessPiece } from "@/utils/pieces";
 import { GetImageFromType } from "@/utils/GetImageFromType";
@@ -61,7 +61,9 @@ export async function saveGameState(
       checkMate,
       stalemate,
     };
-    await updateDoc(matchDocument, { gameState });
+    // setDoc+merge works even if the match document doesn't exist yet,
+    // unlike updateDoc which throws in that case.
+    await setDoc(matchDocument, { gameState }, { merge: true });
   } catch (err) {
     console.warn("Failed to save game state:", err);
   }

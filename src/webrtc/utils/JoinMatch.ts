@@ -37,6 +37,8 @@ export const joinMatch = async (
   }
 
   const { offer, sessionId: currentSessionId } = snapshot.data()!;
+  // Per-session subcollection keeps ICE candidates isolated across reconnects.
+  const sessionRef = doc(collection(matchDocument, "sessions"), currentSessionId);
 
   const peerConnection = new RTCPeerConnection(rtcConfig);
   peerConnectionRef.current = peerConnection;
@@ -70,13 +72,10 @@ export const joinMatch = async (
     };
   };
 
-  const calleeCollection = collection(matchDocument, "calleeCandidates");
+  const calleeCollection = collection(sessionRef, "calleeCandidates");
   peerConnection.onicecandidate = (e) => {
     if (e.candidate) {
-      addDoc(calleeCollection, {
-        ...e.candidate.toJSON(),
-        sessionId: currentSessionId,
-      });
+      addDoc(calleeCollection, e.candidate.toJSON());
     }
   };
 
@@ -90,16 +89,12 @@ export const joinMatch = async (
     { merge: true }
   );
 
-  const callerCollection = collection(matchDocument, "callerCandidates");
+  const callerCollection = collection(sessionRef, "callerCandidates");
   const unsubCandidates = onSnapshot(callerCollection, (snapshot) => {
     snapshot.docChanges().forEach((change) => {
       if (change.type === "added") {
-        const data = change.doc.data();
-        // Ignore candidates from previous sessions.
-        if (data.sessionId !== currentSessionId) return;
-        const { sessionId: _sid, ...iceData } = data;
         peerConnection
-          .addIceCandidate(new RTCIceCandidate(iceData))
+          .addIceCandidate(new RTCIceCandidate(change.doc.data()))
           .catch(console.warn);
       }
     });

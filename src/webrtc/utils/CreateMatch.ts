@@ -57,25 +57,30 @@ export const createMatch = async (
   };
 
   const matchDocument = doc(collection(db, "matches"), hostMatchId);
-  const callerCollection = collection(matchDocument, "callerCandidates");
+
+  // Each session gets its own ICE candidate subcollection so old candidates
+  // never accumulate in a shared collection across reconnects.
+  const sessionRef = doc(collection(matchDocument, "sessions"), sessionId);
+  const callerCollection = collection(sessionRef, "callerCandidates");
 
   peerConnection.onicecandidate = (e) => {
     if (e.candidate) {
-      // Tag each candidate with sessionId so stale ones from prior sessions
-      // are ignored by the guest.
-      addDoc(callerCollection, { ...e.candidate.toJSON(), sessionId });
+      addDoc(callerCollection, e.candidate.toJSON());
     }
   };
 
   const offerDescription = await peerConnection.createOffer();
   await peerConnection.setLocalDescription(offerDescription);
 
-  // merge: true preserves any existing gameState field across host reconnects.
+  // merge: true preserves gameState across reconnects.
+  // answer is explicitly cleared so a stale answer from a previous session
+  // can never be applied before the guest posts a fresh one.
   await setDoc(
     matchDocument,
     {
       offer: { sdp: offerDescription.sdp, type: offerDescription.type },
       sessionId,
+      answer: null,
     },
     { merge: true }
   );
@@ -95,16 +100,12 @@ export const createMatch = async (
     }
   });
 
-  const calleeCollection = collection(matchDocument, "calleeCandidates");
+  const calleeCollection = collection(sessionRef, "calleeCandidates");
   const unsubCandidates = onSnapshot(calleeCollection, (snapshot) => {
     snapshot.docChanges().forEach((change) => {
       if (change.type === "added") {
-        const data = change.doc.data();
-        // Ignore candidates from previous sessions.
-        if (data.sessionId !== sessionId) return;
-        const { sessionId: _sid, ...iceData } = data;
         peerConnection
-          .addIceCandidate(new RTCIceCandidate(iceData))
+          .addIceCandidate(new RTCIceCandidate(change.doc.data()))
           .catch(console.warn);
       }
     });
